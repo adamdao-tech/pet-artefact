@@ -12,12 +12,20 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Semi+Condensed:wght@500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
+<script>
+  // motiv hned při načtení, ať stránka neproblikne
+  try {
+    var t = JSON.parse(localStorage.getItem('pam:theme') || '"system"');
+    if (t === 'system') t = matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    document.documentElement.dataset.theme = t;
+  } catch (e) { document.documentElement.dataset.theme = 'dark'; }
+</script>
 </head>
 <body>
 <header>
   <div class="logo">Pet Artifact Market<small>Nihor2 · Chronicles of Jinteia</small></div>
   <nav id="nav"></nav>
-  
+  <div class="hright" id="hright"></div>
 </header>
 <main id="main"></main>
 <script type="module" src="app.js"></script>

@@ -182,10 +182,22 @@ function results(f, list = allListings()) {
   return out;
 }
 
-// watched searches
+// favourites = uložené kombinace statů (dřív „watched searches“, stejný klíč v localStorage)
 let SAVED = store.get('saved', []);            // [{q, seen}]
 const saveSaved = () => store.set('saved', SAVED);
 const newFor = s => results(queryToF(s.q), D.listings).filter(x => x.l.c > s.seen && !isMine('listing', x.l.id)).length;
+
+// ---------- themes ----------
+const THEMES = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light'], ['midnight', 'Midnight'], ['warm', 'Warm']];
+let THEME = store.get('theme', 'system');
+const mqLight = matchMedia('(prefers-color-scheme: light)');
+function applyTheme() {
+  const t = THEME === 'system' ? (mqLight.matches ? 'light' : 'dark') : THEME;
+  document.documentElement.dataset.theme = t;
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  let m = $('meta[name="theme-color"]'); if (m && bg) m.content = bg;
+}
+mqLight.addEventListener?.('change', () => { if (THEME === 'system') applyTheme(); });
 
 // ---------- components ----------
 function bonusSelect(cls, i, val, taken) {
@@ -193,20 +205,20 @@ function bonusSelect(cls, i, val, taken) {
     .map(b => `<option value="${b.id}" ${b.id === val ? 'selected' : ''} ${taken.has(b.id) && b.id !== val ? 'disabled' : ''}>${esc(bName(b))}</option>`).join('')}</optgroup>`).join('');
   return `<select class="${cls}" data-i="${i}"><option value="">pick a bonus…</option>${groups}</select>`;
 }
-// one bonus line: name, value, "/ max" (or "max" when maxed)
+// value + what it is out of: "+20%  max" (gold) or "+5%  / 10"
+const ofHTML = (b, v) => v >= b.max ? `<span class="of"><span class="mx">max</span></span>` : `<span class="of">/ ${fmtNum(b.max)}</span>`;
 function lineHTML(id, v) {
   const b = BY_ID[id]; if (!b) return '';
-  const atMax = v >= b.max;
   return `<div class="ln" title="${esc(b.name)}, range ${esc(rangeTxt(b))}">
     <span class="nm ${b.c ? 'c-' + b.c : ''}">${esc(bName(b))}</span>
-    <span class="vl ${atMax ? 'max' : ''}">${fmtV(b, v)}</span><span class="of">${atMax ? 'max' : '/ ' + fmtNum(b.max)}</span></div>`;
+    <span class="vl ${v >= b.max ? 'max' : ''}">${fmtV(b, v)}</span>${ofHTML(b, v)}</div>`;
 }
 // what you searched for: clear yes / no per stat
 function wantHTML(m, rows) {
   const all = m.hits === m.n;
   const lines = rows.map(r => {
     const b = BY_ID[r.id], p = m.per[r.id];
-    if (p.st === 'hit') return `<div class="wl ok"><span class="ic">✓</span><span class="nm">${esc(bName(b))}</span><span class="vl ${p.v >= b.max ? 'max' : ''}">${fmtV(b, p.v)}</span><span class="of">${p.v >= b.max ? 'max' : '/ ' + fmtNum(b.max)}</span></div>`;
+    if (p.st === 'hit') return `<div class="wl ok"><span class="ic">✓</span><span class="nm ${b.c ? 'c-' + b.c : ''}">${esc(bName(b))}</span><span class="vl ${p.v >= b.max ? 'max' : ''}">${fmtV(b, p.v)}</span>${ofHTML(b, p.v)}</div>`;
     if (p.st === 'low') return `<div class="wl low"><span class="ic">✕</span><span class="nm">${esc(bName(b))}</span><span class="vl">${fmtV(b, p.v)}</span><span class="of">want ${fmtNum(p.min)}+</span></div>`;
     return `<div class="wl miss"><span class="ic">✕</span><span class="nm">${esc(bName(b))}</span><span class="vl"></span><span class="of">not on it</span></div>`;
   }).join('');
@@ -217,13 +229,15 @@ function cardHTML(l, m, rows, opts = {}) {
   const rest = searched ? l.s.filter(([id]) => !searched.has(id)) : l.s;
   const own = isMine('listing', l.id);
   const priceTxt = l.p == null ? `<span class="price none">Make an offer</span>` : `<span class="price">${fmtYang(l.p)}</span>`;
+  const img = opts.thumbUrl || (l.i ? `/api/img/${l.id}` : '');
   return `<article class="card ${l.demo ? 'demo' : ''}" data-id="${esc(l.id)}">
     <div class="chead">${priceTxt}${l.r != null ? `<span class="rk">rank ${l.r}</span>` : ''}<span class="age">${l.demo ? 'demo' : l.c ? ago(l.b || l.c) : ''}</span></div>
     ${searched ? wantHTML(m, rows) : ''}
     ${rest.length ? `${searched ? `<div class="oh">Other bonuses</div>` : ''}<div class="lines">${rest.map(([id, v]) => lineHTML(id, v)).join('')}</div>` : ''}
-    ${l.i && !opts.noImg ? `<img class="thumb" loading="lazy" src="/api/img/${esc(l.id)}" alt="artifact screenshot" title="Click to enlarge">` : ''}
-    ${opts.thumbUrl ? `<img class="thumb" src="${esc(opts.thumbUrl)}" alt="">` : ''}
-    ${l.t ? `<p class="note">${esc(l.t)}</p>` : ''}
+    <div class="grow"></div>
+    ${img ? `<div class="shotbox"><img class="thumb" loading="lazy" src="${esc(img)}" alt="artifact screenshot" title="Click to enlarge"></div>`
+      : `<div class="shotbox none">${l.demo ? 'demo, no screenshot' : 'no screenshot'}</div>`}
+    ${l.t ? `<p class="note" title="${esc(l.t)}">${esc(l.t)}</p>` : ''}
     <div class="cfoot">${l.demo ? `<span class="dim">Demo listing, not a real seller</span>`
       : `<span class="dim">Seller</span><button class="nick" data-nick="${esc(l.n)}" title="Copy the nick, then whisper them in game">${esc(l.n || '…')}</button>${l.d ? `<span class="contact" title="Discord">${esc(l.d)}</span>` : ''}`}
       <span class="sp"></span>
@@ -263,12 +277,18 @@ function mineBadge() {
 function renderNav() {
   const savedNew = SAVED.reduce((a, s) => a + newFor(s), 0), mb = mineBadge();
   const items = [
-    ['market', 'Buy', `<span class="n">${D.listings.length}</span>${savedNew ? `<span class="new" title="New listings in your watched searches">${savedNew} new</span>` : ''}`],
+    ['market', 'Buy', `<span class="n">${D.listings.length}</span>${savedNew ? `<span class="new" title="New listings in your favourites">${savedNew} new</span>` : ''}`],
     ['sell', 'Sell', ''],
     ['wanted', 'Wanted', `<span class="n">${D.wanted.length}</span>`],
     ['mine', 'My listings', mb ? `<span class="new">${mb}</span>` : ''],
   ];
   $('#nav').innerHTML = items.map(([k, t, x]) => `<a href="#/${k}" class="${VIEW === k ? 'on' : ''}">${t}${x}</a>`).join('');
+  const hr = $('#hright');
+  if (hr && !hr.childElementCount) {
+    hr.innerHTML = `<label for="theme">Theme</label><select id="theme">${THEMES.map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select>`;
+    $('#theme').onchange = e => { THEME = e.target.value; store.set('theme', THEME); applyTheme(); };
+  }
+  if ($('#theme')) $('#theme').value = THEME;
   const tot = savedNew + mb;
   document.title = (tot ? `(${tot}) ` : '') + 'Pet Artifact Market · Jinteia';
 }
@@ -279,7 +299,7 @@ function render() {
 // after data loads, only re-render the parts without half-typed inputs
 function refresh() {
   renderNav();
-  if (VIEW === 'market') { renderWatched(); renderResults(); }
+  if (VIEW === 'market') { renderFavs(); renderResults(); }
   else if (VIEW === 'wanted') renderWantedList();
   else if (VIEW === 'mine') renderMineList();
   else if (VIEW === 'sell') renderSellSide();
@@ -292,27 +312,34 @@ let statQ = '';
 function renderMarket(main) {
   main.innerHTML = `<div class="view v-market">
     <aside class="side picker">
+      <div class="favs" id="favs"></div>
       <h2>Search by stats</h2>
-      <p class="hint" style="margin:-4px 0 12px">Click the stats you want. Add a minimum only if it matters.</p>
-      <div id="selbox"></div>
+      <div id="picked"></div>
       <input id="sq" class="sq" placeholder="Find a stat, e.g. portal" value="${esc(statQ)}" autocomplete="off">
       <div id="statlist" class="statlist"></div>
     </aside>
     <section class="body">
       <div class="toolbar" id="toolbar"></div>
-      <div id="watched"></div>
       <div id="results"></div>
     </section></div>`;
   $('#sq').oninput = e => { statQ = e.target.value; renderStatList(); };
   $('#sq').onkeydown = e => {
-    if (e.key === 'Enter') { const first = $('#statlist [data-pick]:not(.on)'); if (first) { e.target.value = statQ = ''; first.click(); } }
+    if (e.key !== 'Enter') return;
+    const first = $('#statlist .sitem:not(.on)'); if (!first) return;
+    const id = first.dataset.row; e.target.value = statQ = '';
+    toggleStat(id); focusMin(id);
   };
-  renderSel(); renderStatList(); renderToolbar(); renderWatched(); renderResults();
+  renderFavs(); renderPicked(); renderStatList(); renderToolbar(); renderResults();
+}
+function focusMin(id) {
+  const x = $(`#statlist [data-min="${id}"]`); if (!x) return;
+  x.focus(); const n = x.value.length; try { x.setSelectionRange(n, n); } catch {}
+  x.closest('.sitem')?.scrollIntoView({ block: 'nearest' });
 }
 function filterChanged(full) {
   saveF();
-  if (full) { renderSel(); renderStatList(); renderToolbar(); }
-  renderWatched(); renderResults();
+  if (full) { renderPicked(); renderStatList(); renderToolbar(); }
+  renderFavs(); renderResults();
 }
 function toggleStat(id) {
   const i = F.rows.findIndex(r => r.id === id);
@@ -320,45 +347,74 @@ function toggleStat(id) {
   if (F.need >= F.rows.length) F.need = 0;
   filterChanged(true);
 }
-function renderSel() {
-  const el = $('#selbox'); if (!el) return;
-  if (!F.rows.length) { el.innerHTML = `<p class="selnone">No stats picked yet, so you see every listing.</p>`; return; }
-  el.innerHTML = `<div class="sel"><div class="selh"><span>You want</span><span>min</span></div>${F.rows.map(r => { const b = BY_ID[r.id];
-    return `<div class="selrow"><span class="nm">${esc(bName(b))}</span>
-      <input data-min="${r.id}" type="number" inputmode="decimal" min="0" step="any" placeholder="any" value="${esc(r.min)}" title="Minimum value (empty = any)">
-      <span class="of">/ ${fmtNum(b.max)}${unitTxt(b)}</span>
-      <button class="x" data-unpick="${r.id}" title="Remove">×</button></div>`; }).join('')}
-    <div class="row" style="margin-top:4px"><span class="sp"></span><button class="lnk mut sm" id="selclr">clear all</button></div></div>`;
-  $$('[data-min]', el).forEach(x => x.oninput = () => { const r = F.rows.find(r => r.id === x.dataset.min); if (r) r.min = x.value; filterChanged(); });
-  $$('[data-unpick]', el).forEach(b => b.onclick = () => toggleStat(b.dataset.unpick));
-  $('#selclr').onclick = () => { F.rows = []; F.need = 0; filterChanged(true); };
+// favourites: saved stat combos, one click to switch between hunts
+function renderFavs() {
+  const el = $('#favs'); if (!el) return;
+  const cur = fToQuery(F), has = F.rows.length > 0, saved = SAVED.some(s => s.q === cur);
+  el.innerHTML = `<div class="favh"><h3>Favourites</h3><span class="sp"></span>
+      <button class="lnk sm" id="favsave" ${!has || saved ? 'disabled' : ''} title="Save the stats you picked below">${saved ? '★ saved' : '☆ save current'}</button></div>
+    ${SAVED.length ? SAVED.map((s, i) => { const nw = newFor(s);
+      return `<div class="fav ${s.q === cur ? 'on' : ''}" data-fav="${i}" title="${esc(describe(queryToF(s.q)))}"><span class="st">★</span><span class="t">${esc(describe(queryToF(s.q)))}</span>
+        ${nw ? `<span class="new">${nw} new</span>` : `<span class="cnt">${results(queryToF(s.q)).length}</span>`}<button class="x" data-favdel="${i}" title="Remove from favourites">×</button></div>`; }).join('')
+      : `<p class="favnone">Hunting the same stats often? Pick them below and press “save current”. Then switch with one click, and see when new matches show up.</p>`}`;
+  $('#favsave').onclick = () => {
+    if (!F.rows.length) return;
+    if (!SAVED.some(s => s.q === cur)) { SAVED.unshift({ q: cur, seen: Date.now() }); saveSaved(); }
+    renderFavs(); renderNav();
+  };
+  $$('[data-fav]', el).forEach(d => d.onclick = e => {
+    if (e.target.closest('[data-favdel]')) return;
+    const s = SAVED[+d.dataset.fav]; F = queryToF(s.q); s.seen = Date.now(); saveSaved(); filterChanged(true); renderNav();
+  });
+  $$('[data-favdel]', el).forEach(b => b.onclick = () => { SAVED.splice(+b.dataset.favdel, 1); saveSaved(); renderFavs(); renderNav(); });
+}
+function renderPicked() {
+  const el = $('#picked'); if (!el) return;
+  el.innerHTML = F.rows.length
+    ? `<p class="picked">You want ${F.rows.map(r => `<b>${esc(bName(BY_ID[r.id]))}${num(r.min) ? ' ' + fmtNum(num(r.min)) + '+' : ''}</b>`).join(', ')} · <button class="lnk sm" id="pclr">clear</button></p>`
+    : `<p class="picked">Click a stat to pick it, or type a minimum next to it.</p>`;
+  $('#pclr')?.addEventListener('click', () => { F.rows = []; F.need = 0; filterChanged(true); });
 }
 function renderStatList() {
   const el = $('#statlist'); if (!el) return;
   const q = statQ.trim().toLowerCase().replace(/^vs\.?\s*/, '');
-  const on = new Set(F.rows.map(r => r.id));
+  const on = new Map(F.rows.map(r => [r.id, r]));
   const hit = b => !q || b.s.toLowerCase().includes(q) || b.name.toLowerCase().includes(q);
-  const html = GROUPS.map(g => {
+  const html = GROUPS.map((g, gi) => {
     const bs = BONUSES.filter(b => b.g === g.id && hit(b)); if (!bs.length) return '';
-    return `<div class="sg"><div class="sgh">${esc(g.en)}</div>${bs.map(b => `<button class="sitem ${on.has(b.id) ? 'on' : ''}" data-pick="${b.id}" title="${esc(b.name)}">
-      <span class="ck">${on.has(b.id) ? '✓' : '+'}</span><span class="nm ${b.c ? 'c-' + b.c : ''}">${esc(bName(b))}</span><span class="rg">${esc(rangeTxt(b))}</span></button>`).join('')}</div>`;
+    return `<div class="sg"><div class="sgh"><span>${esc(g.en)}</span>${gi === 0 || q ? '<span class="mn">min</span>' : ''}</div>${bs.map(b => { const r = on.get(b.id);
+      return `<div class="sitem ${r ? 'on' : ''}" data-row="${b.id}">
+        <button class="tg" data-pick="${b.id}" title="${esc(b.name)}"><span class="ck">${r ? '✓' : '+'}</span><span class="nm ${b.c ? 'c-' + b.c : ''}">${esc(bName(b))}</span></button>
+        <input data-min="${b.id}" type="text" inputmode="decimal" autocomplete="off" placeholder="${r ? 'any' : 'min'}" value="${esc(r ? r.min : '')}" title="Minimum ${esc(bName(b))} (${esc(rangeTxt(b))})">
+        <span class="rg">/ ${fmtNum(b.max)}${unitTxt(b)}</span></div>`; }).join('')}</div>`;
   }).join('');
   el.innerHTML = html || `<p class="hint">No stat called “${esc(statQ)}”.</p>`;
   $$('[data-pick]', el).forEach(b => b.onclick = () => toggleStat(b.dataset.pick));
+  $$('[data-min]', el).forEach(x => x.oninput = () => {
+    const id = x.dataset.min, v = x.value.replace(/[^\d.,]/g, '');
+    if (v !== x.value) x.value = v;
+    let r = F.rows.find(r => r.id === id);
+    if (!r) {                                   // typing a value picks the stat
+      if (!v) return;
+      F.rows.push({ id, min: v }); saveF();
+      renderPicked(); renderStatList(); renderToolbar(); renderFavs(); renderResults();
+      focusMin(id); return;
+    }
+    r.min = v; saveF(); renderPicked(); renderFavs(); renderResults();
+  });
 }
 function renderToolbar() {
   const el = $('#toolbar'); if (!el) return;
   const n = F.rows.length;
   el.innerHTML = `
-    <label>Must have <select id="fneed" ${n < 2 ? 'disabled' : ''}>
-      <option value="0">${n < 2 ? 'the picked stat' : `all ${n} stats`}</option>
+    <label>Must have <select id="fneed">
+      <option value="0">${n > 1 ? `all ${n} stats` : 'all picked stats'}</option>
       ${Array.from({ length: Math.max(0, n - 1) }, (_, k) => `<option value="${k + 1}" ${F.need === k + 1 ? 'selected' : ''}>at least ${k + 1} of ${n}</option>`).join('')}</select></label>
     <label>Max price <input id="fmax" placeholder="e.g. 200kk" value="${esc(F.maxp)}" class="${isNaN(parseYang(F.maxp)) ? 'bad' : ''}"></label>
     <label>Sort <select id="fsort">${[['match', 'best match'], ['price', 'lowest price'], ['new', 'newest'], ['quality', 'best overall rolls']]
       .map(([k, t]) => `<option value="${k}" ${F.sort === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
     <label class="chk"><input type="checkbox" id="fimg" ${F.img ? 'checked' : ''}> With screenshot</label>
     <span class="sp"></span>
-    <button class="lnk" id="fsave" title="Get a heads-up here when a new listing matches">Watch this search</button>
     <button class="lnk" id="fshare">Copy link</button>
     <button class="lnk" id="fwtb" title="Let sellers know what you are looking for">Post as wanted</button>`;
   $('#fneed').onchange = e => { F.need = +e.target.value; filterChanged(); };
@@ -366,25 +422,10 @@ function renderToolbar() {
   $('#fsort').onchange = e => { F.sort = e.target.value; filterChanged(); };
   $('#fimg').onchange = e => { F.img = e.target.checked; filterChanged(); };
   $('#fshare').onclick = () => copy(location.origin + location.pathname + '#/market?' + fToQuery(F), 'Search link copied');
-  $('#fsave').onclick = () => {
-    const q = fToQuery(F); if (!F.rows.length) { toast('Pick at least one stat first.'); return; }
-    if (!SAVED.some(s => s.q === q)) { SAVED.unshift({ q, seen: Date.now() }); saveSaved(); }
-    toast('Watching. New matches show up next to Buy.'); renderWatched(); renderNav();
-  };
   $('#fwtb').onclick = () => {
     const r = rowsOf(F.rows); if (!r.length) { toast('Pick at least one stat first.'); return; }
     WF.rows = r.map(x => ({ id: x.id, min: x.min || '' })); WF.need = F.need; WF.maxp = F.maxp; saveWF(); location.hash = '#/wanted';
   };
-}
-function renderWatched() {
-  const el = $('#watched'); if (!el) return;
-  if (!SAVED.length) { el.innerHTML = ''; return; }
-  el.innerHTML = `<div class="watched"><span class="dim">Watching:</span>${SAVED.map((s, i) => { const nw = newFor(s);
-    return `<span class="wch"><button class="lnk" data-sv="${i}" title="Open this search">${esc(describe(queryToF(s.q)))}</button>${nw ? `<span class="new">${nw} new</span>` : ''}<button class="x" data-svdel="${i}" title="Stop watching">×</button></span>`; }).join('')}</div>`;
-  $$('[data-sv]', el).forEach(b => b.onclick = () => {
-    const s = SAVED[+b.dataset.sv]; F = queryToF(s.q); s.seen = Date.now(); saveSaved(); filterChanged(true); renderNav();
-  });
-  $$('[data-svdel]', el).forEach(b => b.onclick = () => { SAVED.splice(+b.dataset.svdel, 1); saveSaved(); renderWatched(); renderNav(); });
 }
 function renderResults() {
   const el = $('#results'); if (!el) return;
@@ -401,13 +442,12 @@ function renderResults() {
   let body;
   if (!list.length) {
     body = `<div class="empty"><p>${allListings().length ? 'Nothing matches yet.' : 'The market is empty so far.'}</p>
-      <p>${rows.length ? `${rows.length > 1 ? `Try “at least 1 of ${rows.length}”, lower a minimum, ` : 'Lower the minimum, '}<button class="lnk" id="ewatch">watch this search</button> or <button class="lnk" id="ewtb">post it as wanted</button> so sellers find you.` : `<a href="#/sell">List the first artifact</a>`}</p></div>`;
+      <p>${rows.length ? `${rows.length > 1 ? `Try “at least 1 of ${rows.length}”, lower a minimum, ` : 'Lower the minimum, '}save it to favourites to spot new matches, or <button class="lnk" id="ewtb">post it as wanted</button> so sellers find you.` : `<a href="#/sell">List the first artifact</a>`}</p></div>`;
   } else {
     body = `<div class="cards">${list.slice(0, 300).map(x => cardHTML(x.l, x.m, rows)).join('')}</div>
       ${list.length > 300 ? `<p class="hint">Showing the first 300. Narrow the search.</p>` : ''}`;
   }
   el.innerHTML = head + demoNote + body;
-  $('#ewatch')?.addEventListener('click', () => $('#fsave').click());
   $('#ewtb')?.addEventListener('click', () => $('#fwtb').click());
   $('#hidedemo')?.addEventListener('click', () => { hideDemo = true; store.set('hideDemo', true); renderResults(); });
   $('#showdemo')?.addEventListener('click', () => { hideDemo = false; store.set('hideDemo', false); renderResults(); });
@@ -600,7 +640,7 @@ function renderWantedForm() {
       <input class="wm" data-i="${i}" type="number" inputmode="decimal" min="0" step="any" placeholder="min" title="${esc(rangeTxt(BY_ID[r.id]))}" value="${esc(r.min)}" ${r.id ? '' : 'disabled'}>
       <button class="x" data-wdel="${i}" ${r.id ? '' : 'style="visibility:hidden"'}>×</button></div>`).join('')}</div>
     <div class="grid2">
-      <div><label class="f" for="wneed">Must have</label><select id="wneed" ${n < 2 ? 'disabled' : ''}><option value="0">all${n ? ` ${n}` : ''}</option>
+      <div><label class="f" for="wneed">Must have</label><select id="wneed"><option value="0">${n > 1 ? `all ${n} stats` : 'all picked stats'}</option>
         ${Array.from({ length: Math.max(0, n - 1) }, (_, k) => `<option value="${k + 1}" ${WF.need === k + 1 ? 'selected' : ''}>at least ${k + 1} of ${n}</option>`).join('')}</select></div>
       <div><label class="f" for="wmax">I pay up to</label><input id="wmax" placeholder="e.g. 300kk" value="${esc(WF.maxp)}"></div>
       <div><label class="f" for="wnick">Your in-game nick</label><input id="wnick" maxlength="24" value="${esc(me.nick)}"></div>
@@ -753,6 +793,7 @@ function renderKeys() {
 }
 
 // ---------- start ----------
+applyTheme();
 route();
 loadMarket();
 loadMine();
