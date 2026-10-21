@@ -265,22 +265,22 @@ function buyMsg(l, rows) {
   const ids = rows && rows.length ? rows.map(r => r.id) : [];
   const order = [...l.s].sort((a, b) => (ids.includes(b[0]) - ids.includes(a[0])) || (BY_ID[b[0]].w - BY_ID[a[0]].w));
   const st = order.slice(0, 3).map(([id, v]) => `${bName(BY_ID[id])} ${fmtV(BY_ID[id], v)}`).join(', ');
-  return `Hi, I'd like to buy your pet artifact (${st})${l.p != null ? ` for ${fmtYang(l.p).replace(' ', '')}` : ''}. Saw it on petart.daotech.dev`;
+  return `Hi, I'd like to buy your pet artifact (${st})${l.p != null ? ` for ${fmtYang(l.p).replace(' ', '')}` : ''}.`;
 }
 function sellMsg(w) {
   const mine = MINEDATA.listings.find(l => l.st === 'active' && wantFits(w, l));
   if (mine) {
     const st = mine.s.filter(([id]) => w.w.some(x => x[0] === id)).map(([id, v]) => `${bName(BY_ID[id])} ${fmtV(BY_ID[id], v)}`).join(', ');
-    return `Hi, I have a pet artifact for your request (${st})${mine.p != null ? `, ${fmtYang(mine.p).replace(' ', '')}` : ''}. From petart.daotech.dev`;
+    return `Hi, I have a pet artifact for your request (${st})${mine.p != null ? `, ${fmtYang(mine.p).replace(' ', '')}` : ''}.`;
   }
-  return `Hi, I saw your pet artifact request (${w.w.map(([id]) => bName(BY_ID[id])).join(', ')}) on petart.daotech.dev. I might have one for you.`;
+  return `Hi, I saw your pet artifact request (${w.w.map(([id]) => bName(BY_ID[id])).join(', ')}). I might have one for you.`;
 }
 function openContact({ nick, discord, msg, role }) {
   $('.modal')?.remove();
   const d = document.createElement('div'); d.className = 'modal';
   d.innerHTML = `<div class="mbox" role="dialog" aria-label="Contact ${esc(nick)}">
     <div class="row"><h2 style="margin:0">Contact ${esc(nick)}</h2><span class="sp"></span><button class="x" data-close title="Close">×</button></div>
-    <p class="hint" style="margin:6px 0 14px">Whisper the ${role} in game: open the whisper window, put in the nick, then paste the message.</p>
+    <p class="hint" style="margin:6px 0 14px">Whisper the ${role} in game: press <b>Shift + Enter</b>, paste the nick into the first field and the message into the second.</p>
     <div class="step"><span class="sn">1</span><div class="sb"><div class="sl">In-game nick</div><div class="row"><b class="bignick">${esc(nick)}</b><span class="sp"></span><button class="btn" data-cp="nick">Copy nick</button></div></div></div>
     <div class="step"><span class="sn">2</span><div class="sb"><div class="sl">Message <span class="dim">(you can edit it)</span></div><textarea id="cmsg" rows="3" maxlength="240">${esc(msg)}</textarea>
       <div class="row" style="margin-top:6px"><span class="dim sm" id="clen"></span><span class="sp"></span><button class="btn pri" data-cp="msg">Copy message</button></div></div></div>
