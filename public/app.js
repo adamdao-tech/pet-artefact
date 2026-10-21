@@ -95,7 +95,7 @@ async function loadMarket(fresh) {
 }
 // jednoduchá cache pro výpočty nad celým marketem (oblíbené, odznaky)
 const memo = new Map();
-const cached = (key, fn) => { const k = key + '|' + DV + '|' + hideDemo; if (!memo.has(k)) memo.set(k, fn()); return memo.get(k); };
+const cached = (key, fn) => { const k = key + '|' + DV; if (!memo.has(k)) memo.set(k, fn()); return memo.get(k); };
 async function api(path, body, form) {
   const r = await fetch(path, form ? { method: 'POST', body: form } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
@@ -103,30 +103,7 @@ async function api(path, body, form) {
   return j;
 }
 
-// ---------- demo listings (so the search can be tried before the market fills up) ----------
-const DEMO_UNTIL = 10;               // demo shows while there are fewer real listings than this
-let hideDemo = store.get('hideDemo', false);
-const DEMO = (() => {
-  let s = 20261021;
-  const rnd = () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-  const pool = BONUSES.flatMap(b => Array(b.w === 3 ? 3 : b.w === 2 ? 2 : 1).fill(b));
-  const out = [], now = Date.now();
-  for (let i = 0; i < 40; i++) {
-    const picked = [];
-    while (picked.length < 7) { const b = pool[Math.floor(rnd() * pool.length)]; if (!picked.includes(b)) picked.push(b); }
-    const st = picked.map(b => {
-      let v = b.min + (b.max - b.min) * Math.pow(rnd(), 0.8);
-      v = b.max >= 100 ? Math.round(v / 10) * 10 : Math.round(v);
-      return [b.id, clamp(v, b.min, b.max)];
-    });
-    const q = st.reduce((a, [id, v]) => a + (W8[BY_ID[id].w] || 0) * pct(BY_ID[id], v), 0) / MAX_LINES;
-    const price = rnd() < 0.15 ? null : Math.round(15 + q * 450 * (0.7 + rnd() * 0.6)) * 1e6;
-    out.push({ id: 'demo' + i, demo: true, s: st, p: price, n: 'DemoSeller', d: '', t: '', r: null, i: 0, c: now - i * 2.7 * 3600e3, b: now - i * 2.7 * 3600e3 });
-  }
-  return out;
-})();
-const demoOn = () => loaded && !hideDemo && D.listings.length < DEMO_UNTIL;
-const allListings = () => demoOn() ? D.listings.concat(DEMO) : D.listings;
+const allListings = () => D.listings;
 
 // my stuff (edit keys live only in this browser)
 let MINE = store.get('mine', []);              // [{kind:'listing'|'wanted', id, key}]
@@ -198,7 +175,7 @@ function results(f, list = allListings()) {
     quality: (a, b) => b.qv - a.qv || byPrice(a, b),
   };
   const srt = sorts[f.sort] || sorts.match;
-  out.sort((a, b) => (a.l.demo ? 1 : 0) - (b.l.demo ? 1 : 0) || srt(a, b));    // real listings always before demo ones
+  out.sort(srt);
   return out;
 }
 
@@ -254,19 +231,18 @@ function cardHTML(l, m, rows, opts = {}) {
   const own = isMine('listing', l.id);
   const priceTxt = l.p == null ? `<span class="price none">Make an offer</span>` : `<span class="price">${yangHTML(l.p)}</span>`;
   const img = opts.thumbUrl || (l.i ? `/api/img/${l.id}` : '');
-  return `<article class="card ${l.demo ? 'demo' : ''}" data-id="${esc(l.id)}"${opts.i != null ? ` style="--i:${Math.min(opts.i, 14)}"` : ''}>
-    <div class="chead">${priceTxt}${l.r != null ? `<span class="rk">rank ${l.r}</span>` : ''}${l.demo ? `<span class="age">demo</span>` : l.c ? timeHTML(l.c, l.b) : ''}</div>
+  return `<article class="card" data-id="${esc(l.id)}"${opts.i != null ? ` style="--i:${Math.min(opts.i, 14)}"` : ''}>
+    <div class="chead">${priceTxt}${l.r != null ? `<span class="rk">rank ${l.r}</span>` : ''}${l.c ? timeHTML(l.c, l.b) : ''}</div>
     ${opts.top || ''}
     ${searched ? wantHTML(m, rows) : ''}
     ${rest.length ? `${searched ? `<div class="oh">Other bonuses</div>` : ''}<div class="lines">${rest.map(([id, v]) => lineHTML(id, v)).join('')}</div>` : ''}
     <div class="grow"></div>
     ${img ? `<div class="shotbox"><img class="thumb" loading="lazy" src="${esc(img)}" alt="artifact screenshot" title="Click to enlarge"></div>`
-      : `<div class="shotbox none">${l.demo ? 'demo, no screenshot' : 'no screenshot'}</div>`}
+      : `<div class="shotbox none">no screenshot</div>`}
     ${l.t ? `<p class="note" title="${esc(l.t)}">${esc(l.t)}</p>` : ''}
-    ${opts.foot != null ? opts.foot : `<div class="cfoot">${l.demo ? `<span class="dim">Demo listing, not a real seller</span>`
-      : `<span class="dim">Seller</span><button class="nick" data-contact="${esc(l.id)}" title="Whisper them in game">${esc(l.n || '…')}</button>${discordHTML(l.d)}`}
+    ${opts.foot != null ? opts.foot : `<div class="cfoot">${`<span class="dim">Seller</span><button class="nick" data-contact="${esc(l.id)}" title="Whisper them in game">${esc(l.n || '…')}</button>${discordHTML(l.d)}`}
       <span class="sp"></span>
-      ${l.demo ? '' : own ? `<span class="tag">yours</span>` : opts.preview ? '' : `<button class="lnk mut sm" data-report="listing:${esc(l.id)}">report</button><button class="btn sm ctc" data-contact="${esc(l.id)}">Contact</button>`}</div>`}
+      ${own ? `<span class="tag">yours</span>` : opts.preview ? '' : `<button class="lnk mut sm" data-report="listing:${esc(l.id)}">report</button><button class="btn sm ctc" data-contact="${esc(l.id)}">Contact</button>`}</div>`}
   </article>`;
 }
 function wantLines(w) {
@@ -516,11 +492,9 @@ function renderResults(animate) {
   if (!loaded) { el.innerHTML = `<div class="empty">${loadErr || 'Loading the market…'}</div>`; return; }
   if (!resultsShown) { animate = true; resultsShown = true; }   // první zobrazení po načtení dat
   const list = results(F), rows = rowsOf(F.rows);
-  const real = list.filter(x => !x.l.demo);
+  const real = list;
   const prices = real.map(x => x.l.p).filter(p => p != null);
   const sold = D.sold.filter(s => matchListing(s, rows, F.need).ok && s.p != null).map(s => s.p);
-  const demoNote = demoOn() ? `<div class="demonote">The market is just starting, so ${DEMO.length} <b>demo listings</b> are mixed in to let you try the search. They go away once ${DEMO_UNTIL} real listings are up. <button class="lnk" id="hidedemo">Hide demo</button></div>`
-    : (hideDemo && D.listings.length < DEMO_UNTIL) ? `<div class="demonote slim"><button class="lnk" id="showdemo">Show demo listings</button></div>` : '';
   const head = `<div class="rhead"><h2>${rows.length ? `${plural(list.length, 'listing')} match` : plural(list.length, 'listing')}</h2>
     ${prices.length ? `<span class="pricebar">asking from <b>${fmtYang(Math.min(...prices))}</b>${prices.length > 2 ? `, typical <b>${fmtYang(median(prices))}</b>` : ''} yang</span>` : ''}
     ${sold.length ? `<span class="pricebar">recently sold for <b>${fmtYang(median(sold))}</b> <span class="dim">(median of ${sold.length})</span></span>` : ''}</div>`;
@@ -532,10 +506,8 @@ function renderResults(animate) {
     body = `<div class="cards ${animate ? 'reveal' : ''}">${list.slice(0, 300).map((x, i) => cardHTML(x.l, x.m, rows, { i })).join('')}</div>
       ${list.length > 300 ? `<p class="hint">Showing the first 300. Narrow the search.</p>` : ''}`;
   }
-  el.innerHTML = head + demoNote + body;
+  el.innerHTML = head + body;
   $('#ewtb')?.addEventListener('click', () => $('#fwtb').click());
-  $('#hidedemo')?.addEventListener('click', () => { hideDemo = true; store.set('hideDemo', true); renderResults(); });
-  $('#showdemo')?.addEventListener('click', () => { hideDemo = false; store.set('hideDemo', false); renderResults(); });
   bindCommon(el);
 }
 

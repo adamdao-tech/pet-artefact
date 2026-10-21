@@ -30,7 +30,7 @@
   --max:#f2c66d; --maxbg:#f2c66d24;
   --good:#9bc98a; --goodbg:#9bc98a10; --goodline:#9bc98a38;
   --part:#e3a95a; --partbg:#e3a95a0e; --partline:#e3a95a3a;
-  --bad:#e0705f; --dash:#4a3825; --shotbg:#0a0807; --demo:#15110d;
+  --bad:#e0705f; --dash:#4a3825; --shotbg:#0a0807;
   --font-body:"Alegreya Sans","Segoe UI",sans-serif; --font-head:"Cinzel",Georgia,serif; --font-num:"Alegreya Sans",sans-serif;
   --head-spacing:.04em; --radius:4px; --radius-sm:3px; --pill:3px;
   --card-bg:linear-gradient(180deg,#1d1610 0%,#15110d 100%);
@@ -48,7 +48,7 @@
   --max:#ffd27a; --maxbg:#ffd27a22;
   --good:#7ee0b5; --goodbg:#7ee0b512; --goodline:#7ee0b53a;
   --part:#f7b4e6; --partbg:#f7b4e610; --partline:#f7b4e63a;
-  --bad:#ff8aa5; --dash:#2b3274; --shotbg:#03040ccc; --demo:#0b0e2a99;
+  --bad:#ff8aa5; --dash:#2b3274; --shotbg:#03040ccc;
   --font-body:"Inter","Segoe UI",sans-serif; --font-head:"Space Grotesk","Inter",sans-serif; --font-num:"Space Grotesk",sans-serif;
   --radius:16px; --radius-sm:10px; --pill:999px;
   --card-bg:linear-gradient(160deg,#151a4aa6,#0b0d2ab3); --card-border:1px solid #ffffff1a;
@@ -66,7 +66,7 @@
   --max:#ffd23f; --maxbg:#ffd23f1f;
   --good:#b6ff3c; --goodbg:#b6ff3c0c; --goodline:#b6ff3c40;
   --part:#c77dff; --partbg:#c77dff0e; --partline:#c77dff44;
-  --bad:#ff3d6b; --dash:#2a3038; --shotbg:#050607; --demo:#0b0d10;
+  --bad:#ff3d6b; --dash:#2a3038; --shotbg:#050607;
   --font-body:"Chakra Petch","Segoe UI",sans-serif; --font-head:"Rajdhani","Chakra Petch",sans-serif; --font-num:"Rajdhani",sans-serif;
   --head-weight:700; --head-spacing:.06em; --radius:0; --radius-sm:0; --pill:0;
   --card-bg:linear-gradient(180deg,#101317,#0b0d10); --card-border:1px solid #232a31;
@@ -84,7 +84,7 @@
   --max:#b0802c; --maxbg:#e8c98a40;
   --good:#3f8a6a; --goodbg:#3f8a6a0d; --goodline:#3f8a6a33;
   --part:#a0628c; --partbg:#b98ad914; --partline:#b98ad955;
-  --bad:#c2445a; --dash:#ecc6cf; --shotbg:#2a1a20; --demo:#fff9fa;
+  --bad:#c2445a; --dash:#ecc6cf; --shotbg:#2a1a20;
   --font-body:"Quicksand","Segoe UI",sans-serif; --font-head:"Playfair Display",Georgia,serif; --font-num:"Quicksand",sans-serif;
   --head-style:italic; --radius:20px; --radius-sm:12px; --pill:999px;
   --card-bg:linear-gradient(180deg,#ffffff,#fff8f9); --card-border:1px solid #f3dde2;
@@ -102,7 +102,7 @@
   --max:#9a7322; --maxbg:#c9a24e26;
   --good:#3d6b4a; --goodbg:transparent; --goodline:#3d6b4a55;
   --part:#8a5a2b; --partbg:transparent; --partline:#8a5a2b55;
-  --bad:#9c3b2e; --dash:#d5c9b7; --shotbg:#1d1915; --demo:#f8f4ee;
+  --bad:#9c3b2e; --dash:#d5c9b7; --shotbg:#1d1915;
   --font-body:"Jost","Segoe UI",sans-serif; --font-head:"Cormorant Garamond",Georgia,serif; --font-num:"Jost",sans-serif;
   --head-weight:600; --radius:0; --radius-sm:0; --pill:0;
   --card-bg:#fbf8f3; --card-border:1px solid #ddd3c4; --card-shadow:none;
@@ -118,7 +118,7 @@
   --max:#a77d1f; --maxbg:#e8cf8a40;
   --good:#3c8a7a; --goodbg:#3c8a7a0d; --goodline:#3c8a7a33;
   --part:#9a6bb8; --partbg:#c9a6e014; --partline:#b896d455;
-  --bad:#c0506a; --dash:#c5c9e6; --shotbg:#1d2038; --demo:#f3f3fbb3;
+  --bad:#c0506a; --dash:#c5c9e6; --shotbg:#1d2038;
   --font-body:"Manrope","Segoe UI",sans-serif; --font-head:"Syne","Manrope",sans-serif; --font-num:"Manrope",sans-serif;
   --radius:22px; --radius-sm:12px; --pill:999px;
   --card-bg:linear-gradient(160deg,#ffffffb8,#f1f0fb99); --card-border:1px solid #ffffffcc;
@@ -136,7 +136,7 @@
   --max:#d4b26a; --maxbg:#d4b26a20;
   --good:#9fbf9a; --goodbg:#9fbf9a0c; --goodline:#9fbf9a33;
   --part:#c97a8e; --partbg:#8e1f3a14; --partline:#8e1f3a66;
-  --bad:#e06a7a; --dash:#3a2a32; --shotbg:#070607; --demo:#120e12;
+  --bad:#e06a7a; --dash:#3a2a32; --shotbg:#070607;
   --font-body:"EB Garamond",Georgia,serif; --font-head:"Cormorant SC","EB Garamond",serif; --font-num:"EB Garamond",serif;
   --head-spacing:.05em; --radius:2px; --radius-sm:2px; --pill:2px;
   --card-bg:linear-gradient(180deg,#161117,#100c10); --card-border:1px solid #3a2a32;
@@ -154,7 +154,7 @@
   --max:#b07a00; --maxbg:#ffd84d55;
   --good:#118a4a; --goodbg:#11cc6a10; --goodline:#11a85a44;
   --part:#2f6bff; --partbg:#2f6bff0e; --partline:#2f6bff44;
-  --bad:#e0204a; --dash:#9aa6bb; --shotbg:#0c0f1c; --demo:#eef2f8;
+  --bad:#e0204a; --dash:#9aa6bb; --shotbg:#0c0f1c;
   --font-body:"Nunito","Segoe UI",sans-serif; --font-head:"VT323",monospace; --font-num:"Nunito",sans-serif;
   --head-weight:400; --head-spacing:.02em; --radius:10px; --radius-sm:6px; --pill:999px;
   --card-bg:linear-gradient(180deg,#ffffff 0%,#f1f5fb 55%,#e2e9f3 100%); --card-border:1px solid #9ea9bd;
@@ -297,8 +297,6 @@ input[type=number]::-webkit-inner-spin-button{opacity:.3}
 .toolbar select,.toolbar input{width:auto;padding:5px 8px}
 .toolbar input#fmax{width:110px}
 .toolbar .chk{margin:0}
-.demonote{background:var(--panel);border-left:3px solid var(--accent);border-radius:var(--radius-sm);padding:8px 12px;font-size:14px;color:var(--text2);margin:0 0 14px;backdrop-filter:var(--blur)}
-.demonote.slim{background:none;border:0;padding:0}
 .rhead{display:flex;align-items:baseline;gap:18px;flex-wrap:wrap;margin-bottom:14px}
 .rhead h2{margin:0}
 .pricebar{font-size:14px;color:var(--muted)}
@@ -310,7 +308,6 @@ input[type=number]::-webkit-inner-spin-button{opacity:.3}
   padding:13px 15px 11px;display:flex;flex-direction:column;gap:8px;min-width:0;
   transition:transform .35s var(--ease),box-shadow .35s var(--ease),border-color .35s}
 .card:hover{transform:var(--card-lift);box-shadow:var(--card-hover-shadow);border-color:var(--card-hover-border)}
-.card.demo{opacity:.92}
 .cards.reveal .card{animation:var(--reveal) var(--reveal-dur) var(--ease) backwards;animation-delay:calc(var(--i,0) * 40ms)}
 .chead{display:flex;align-items:baseline;gap:10px}
 .price{font:var(--head-style) var(--head-weight) 21px/1 var(--font-head);letter-spacing:var(--head-spacing);color:var(--text)}
