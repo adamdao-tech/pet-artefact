@@ -45,6 +45,9 @@ const ago = t => {
   if (s < 86400) return `${Math.round(s / 3600)} h ago`;
   const d = Math.round(s / 86400); return `${d} ${d === 1 ? 'day' : 'days'} ago`;
 };
+// cena s ikonkou yangu, Discord kontakt s ikonkou
+const yangHTML = v => `<img class="coin" src="icons/yang.png" alt="">${fmtYang(v)}<span class="cur">yang</span>`;
+const discordHTML = d => d ? `<button class="dc" data-dc="${esc(d)}" title="Discord: ${esc(d)} (click to copy)"><img src="icons/discord.svg" alt="Discord"><span>${esc(d)}</span></button>` : '';
 const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const plural = (n, w, pl) => `${n} ${n === 1 ? w : (pl || w + 's')}`;
 const bName = b => b.s;
@@ -230,7 +233,7 @@ function cardHTML(l, m, rows, opts = {}) {
   const searched = m && rows && rows.length ? new Set(rows.map(r => r.id)) : null;
   const rest = searched ? l.s.filter(([id]) => !searched.has(id)) : l.s;
   const own = isMine('listing', l.id);
-  const priceTxt = l.p == null ? `<span class="price none">Make an offer</span>` : `<span class="price">${fmtYang(l.p)}</span>`;
+  const priceTxt = l.p == null ? `<span class="price none">Make an offer</span>` : `<span class="price">${yangHTML(l.p)}</span>`;
   const img = opts.thumbUrl || (l.i ? `/api/img/${l.id}` : '');
   return `<article class="card ${l.demo ? 'demo' : ''}" data-id="${esc(l.id)}"${opts.i != null ? ` style="--i:${Math.min(opts.i, 14)}"` : ''}>
     <div class="chead">${priceTxt}${l.r != null ? `<span class="rk">rank ${l.r}</span>` : ''}<span class="age">${l.demo ? 'demo' : l.c ? ago(l.b || l.c) : ''}</span></div>
@@ -241,7 +244,7 @@ function cardHTML(l, m, rows, opts = {}) {
       : `<div class="shotbox none">${l.demo ? 'demo, no screenshot' : 'no screenshot'}</div>`}
     ${l.t ? `<p class="note" title="${esc(l.t)}">${esc(l.t)}</p>` : ''}
     <div class="cfoot">${l.demo ? `<span class="dim">Demo listing, not a real seller</span>`
-      : `<span class="dim">Seller</span><button class="nick" data-nick="${esc(l.n)}" title="Copy the nick, then whisper them in game">${esc(l.n || '…')}</button>${l.d ? `<span class="contact" title="Discord">${esc(l.d)}</span>` : ''}`}
+      : `<span class="dim">Seller</span><button class="nick" data-nick="${esc(l.n)}" title="Copy the nick, then whisper them in game">${esc(l.n || '…')}</button>${discordHTML(l.d)}`}
       <span class="sp"></span>
       ${l.demo ? '' : own ? `<span class="tag">yours</span>` : opts.preview ? '' : `<button class="lnk mut sm" data-report="listing:${esc(l.id)}">report</button>`}</div>
   </article>`;
@@ -251,6 +254,7 @@ function wantLines(w) {
 }
 function bindCommon(root) {
   $$('[data-nick]', root).forEach(b => b.onclick = () => copy(b.dataset.nick, `Copied ${b.dataset.nick}. Whisper them in game.`));
+  $$('[data-dc]', root).forEach(b => b.onclick = () => copy(b.dataset.dc, `Copied Discord name ${b.dataset.dc}.`));
   $$('.thumb', root).forEach(i => i.onclick = () => lightbox(i.src));
   $$('[data-report]', root).forEach(b => b.onclick = async () => {
     if (!confirm('Report this as a scam or spam? It gets hidden after 3 reports.')) return;
@@ -441,7 +445,7 @@ function renderResults(animate) {
   const demoNote = demoOn() ? `<div class="demonote">The market is just starting, so ${DEMO.length} <b>demo listings</b> are mixed in to let you try the search. They go away once ${DEMO_UNTIL} real listings are up. <button class="lnk" id="hidedemo">Hide demo</button></div>`
     : (hideDemo && D.listings.length < DEMO_UNTIL) ? `<div class="demonote slim"><button class="lnk" id="showdemo">Show demo listings</button></div>` : '';
   const head = `<div class="rhead"><h2>${rows.length ? `${plural(list.length, 'listing')} match` : plural(list.length, 'listing')}</h2>
-    ${prices.length ? `<span class="pricebar">asking from <b>${fmtYang(Math.min(...prices))}</b>${prices.length > 2 ? `, typical <b>${fmtYang(median(prices))}</b>` : ''}</span>` : ''}
+    ${prices.length ? `<span class="pricebar">asking from <b>${fmtYang(Math.min(...prices))}</b>${prices.length > 2 ? `, typical <b>${fmtYang(median(prices))}</b>` : ''} yang</span>` : ''}
     ${sold.length ? `<span class="pricebar">recently sold for <b>${fmtYang(median(sold))}</b> <span class="dim">(median of ${sold.length})</span></span>` : ''}</div>`;
   let body;
   if (!list.length) {
@@ -586,7 +590,7 @@ function renderSellSide() {
   el.innerHTML = `<h2>Preview</h2>
     <div class="preview">${cardHTML(l, null, null, { preview: true, thumbUrl: SI.url })}</div>
     <h3>${fits.length ? `${plural(fits.length, 'buyer')} ${fits.length === 1 ? 'is' : 'are'} looking for this` : 'Buyers looking for this'}</h3>
-    ${fits.length ? `<div class="wlist">${fits.slice(0, 6).map(w => `<div class="wi"><div class="row"><button class="nick" data-nick="${esc(w.n)}">${esc(w.n)}</button>${w.d ? `<span class="contact">${esc(w.d)}</span>` : ''}<span class="sp"></span>${budgetTxt(w, l)}</div>
+    ${fits.length ? `<div class="wlist">${fits.slice(0, 6).map(w => `<div class="wi"><div class="row"><button class="nick" data-nick="${esc(w.n)}">${esc(w.n)}</button>${discordHTML(w.d)}<span class="sp"></span>${budgetTxt(w, l)}</div>
       <div class="wst sm">${w.w.map(([id, min]) => `<b>${esc(bName(BY_ID[id]))}</b>${min ? ' ' + fmtNum(min) + '+' : ''}`).join(' · ')}</div></div>`).join('')}</div>
       <p class="hint">Click a nick to copy it and whisper them in game.</p>`
       : `<p class="mut sm">Nobody has posted a wanted request for these stats yet.</p>`}
@@ -693,14 +697,13 @@ function renderWantedList() {
   el.innerHTML = `<div class="rhead"><h2>${plural(D.wanted.length, 'wanted request')}</h2>
       ${myL.length ? `<label class="chk" style="margin:0"><input type="checkbox" id="wonly" ${wOnlyMine ? 'checked' : ''}> only where my artifact fits</label>` : ''}</div>
     ${list.length ? `<div class="wcards">${list.map(({ w, fit, cnt }) => `<article class="wcard">
-      <div class="chead">${w.p != null ? `<span class="price">up to ${fmtYang(w.p)}</span>` : `<span class="price none">Price open</span>`}<span class="age">${ago(w.b)}</span></div>
+      <div class="chead">${w.p != null ? `<span class="price"><span class="upto">up to</span>${yangHTML(w.p)}</span>` : `<span class="price none">Price open</span>`}<span class="age">${ago(w.b)}</span></div>
       <div class="lines">${wantLines(w)}</div>
       ${w.k < w.w.length ? `<span class="mut sm">${w.k} of ${w.w.length} is enough</span>` : ''}
       ${w.t ? `<p class="note">${esc(w.t)}</p>` : ''}
-      ${fit.length ? `<span class="tag">your artifact fits (${fit.length})</span>` : ''}
-      <div class="cfoot"><span class="dim">Buyer</span><button class="nick" data-nick="${esc(w.n)}">${esc(w.n)}</button>${w.d ? `<span class="contact">${esc(w.d)}</span>` : ''}<span class="sp"></span>
-        ${cnt ? `<a href="#" data-wgo="${esc(w.id)}" class="sm">${plural(cnt, 'listing')} match</a>` : ''}
-        ${isMine('wanted', w.id) ? `<span class="tag">yours</span>` : `<button class="lnk mut sm" data-report="wanted:${esc(w.id)}">report</button>`}</div>
+      <div class="row sm">${cnt ? `<a href="#" data-wgo="${esc(w.id)}">${plural(cnt, 'listing')} match →</a>` : `<span class="dim">no listing matches yet</span>`}<span class="sp"></span>${fit.length ? `<span class="tag">your artifact fits (${fit.length})</span>` : ''}</div>
+      <div class="cfoot"><span class="dim">Buyer</span><button class="nick" data-nick="${esc(w.n)}">${esc(w.n)}</button>${discordHTML(w.d)}<span class="sp"></span>
+        ${isMine('wanted', w.id) ? `<span class="tag">yours</span>` : ''}</div>
     </article>`).join('')}</div>`
     : `<div class="empty">${wOnlyMine ? 'Nobody is asking for your artifacts right now.' : 'No wanted requests yet. Be the first.'}</div>`}`;
   $('#wonly')?.addEventListener('change', e => { wOnlyMine = e.target.checked; renderWantedList(); });
@@ -733,7 +736,7 @@ function renderMineList() {
     ${L.length ? `<div class="mlist">${L.map(l => {
       const fits = l.st === 'active' ? D.wanted.filter(w => !isMine('wanted', w.id) && wantFits(w, l)) : [];
       const ed = EDIT && EDIT.id === l.id ? EDIT.mode : '';
-      return `<div class="mi"><div><div class="row" style="gap:12px"><span class="price ${l.p == null ? 'none' : ''}">${l.p == null ? 'offers' : fmtYang(l.p)}</span>
+      return `<div class="mi"><div><div class="row" style="gap:12px"><span class="price ${l.p == null ? 'none' : ''}">${l.p == null ? 'offers' : yangHTML(l.p)}</span>
           <span class="st ${l.st}">${statusTxt(l.st)}${l.st === 'sold' && l.sp != null ? ' for ' + fmtYang(l.sp) : ''}</span><span class="dim sm">${ago(l.b)}</span></div>
           <div class="stl">${stl(l.s)}</div></div>
         <div class="acts">${l.st === 'active' ? `<button class="lnk" data-act="sold" data-id="${l.id}">mark sold</button><button class="lnk" data-act="price" data-id="${l.id}">change price</button>` : ''}
@@ -745,7 +748,7 @@ function renderMineList() {
       </div>`; }).join('')}</div>` : `<p class="mut">Nothing here yet. Listings you post from this browser show up here.</p>`}
     <div class="rhead" style="margin-top:28px"><h2>My wanted requests</h2><a href="#/wanted" class="sm">+ new request</a></div>
     ${Wn.length ? `<div class="mlist">${Wn.map(w => { const cnt = w.st === 'active' ? D.listings.filter(l => !isMine('listing', l.id) && wantFits(w, l)).length : 0;
-      return `<div class="mi"><div><div class="row" style="gap:12px"><span class="price ${w.p == null ? 'none' : ''}">${w.p == null ? 'price open' : 'up to ' + fmtYang(w.p)}</span><span class="st ${w.st}">${statusTxt(w.st)}</span><span class="dim sm">${ago(w.b)}</span></div>
+      return `<div class="mi"><div><div class="row" style="gap:12px"><span class="price ${w.p == null ? 'none' : ''}">${w.p == null ? 'price open' : '<span class="upto">up to</span>' + yangHTML(w.p)}</span><span class="st ${w.st}">${statusTxt(w.st)}</span><span class="dim sm">${ago(w.b)}</span></div>
         <div class="stl">${w.w.map(([id, min]) => `${esc(bName(BY_ID[id]))}${min ? ' <b>' + fmtNum(min) + '+</b>' : ''}`).join(' · ')}</div></div>
         <div class="acts">${cnt ? `<a href="#" data-wgo="${w.id}">${plural(cnt, 'listing')} match</a>` : ''}${w.st !== 'hidden' ? `<button class="lnk" data-wact="bump" data-id="${w.id}">renew</button>` : ''}<button class="lnk bad" data-wact="delete" data-id="${w.id}">delete</button></div></div>`; }).join('')}</div>`
       : `<p class="mut">No wanted requests.</p>`}`;
