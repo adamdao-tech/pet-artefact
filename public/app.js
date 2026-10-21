@@ -1,10 +1,11 @@
 // ============================================================
-//  Pet Artifact Market – UI (English only)
+//  Pet Artifact Market – UI (zdrojové texty anglicky, překlad dělá i18n.js)
 //  Views: #/market (buy), #/sell, #/wanted, #/mine
 // ============================================================
 import { BONUSES, GROUPS, BY_ID, MAX_LINES } from './bonuses.js';
 import { readScreenshot, loadImg, makeThumb } from './ocr.js';
 import { setFx } from './fx.js';
+import { LANGS, T, startI18n, locale } from './i18n.js';
 
 // ---------- basics ----------
 const store = {
@@ -50,7 +51,7 @@ const yangHTML = v => `<img class="coin" src="icons/yang.png" alt="">${fmtYang(v
 const discordHTML = d => d ? `<button class="dc" data-dc="${esc(d)}" title="Discord: ${esc(d)} (click to copy)"><img src="icons/discord.png" alt="Discord"><span>${esc(d)}</span></button>` : '';
 // jak dlouho je nabídka venku: „posted 2 min ago“ / „renewed 1 h ago“, živě se přepočítává
 const TTL_MS = 14 * 86400e3;
-const fmtDate = t => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const fmtDate = t => new Date(t).toLocaleString(locale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 const left = t => { const d = (t + TTL_MS - Date.now()) / 86400e3; return d <= 0 ? 'expired' : d < 1 ? `expires in ${Math.max(1, Math.round(d * 24))} h` : `expires in ${Math.round(d)} ${Math.round(d) === 1 ? 'day' : 'days'}`; };
 const timeLabel = (c, b) => (b && c && b - c > 60e3 ? 'renewed ' : 'posted ') + ago(b || c);
 const timeHTML = (c, b, cls = 'age') => `<span class="${cls}" data-tc="${c}" data-tb="${b || c}" title="Posted ${fmtDate(c)}${b && b - c > 60e3 ? `, renewed ${fmtDate(b)}` : ''} · ${left(b || c)}">${timeLabel(c, b)}</span>`;
@@ -68,7 +69,7 @@ function toast(msg) {
 }
 async function copy(text, msg) {
   try { await navigator.clipboard.writeText(text); toast(msg || 'Copied'); }
-  catch { prompt('Copy this:', text); }
+  catch { prompt(T('Copy this:'), text); }
 }
 function lightbox(src) {
   const d = document.createElement('div'); d.className = 'lb'; d.innerHTML = `<img src="${esc(src)}" alt="">`;
@@ -198,6 +199,9 @@ let SAVED = store.get('saved', []);            // [{q, seen}]
 const saveSaved = () => store.set('saved', SAVED);
 const newFor = s => results(queryToF(s.q), D.listings).filter(x => x.l.c > s.seen && !isMine('listing', x.l.id)).length;
 
+// ---------- jazyk ----------
+let LANG = LANGS[store.get('lang', 'en')] ? store.get('lang', 'en') : 'en';
+
 // ---------- themes (definice v index.html → window.PAM_THEMES) ----------
 const THEMES = window.PAM_THEMES || { fantasy: { name: 'Dark Fantasy', mode: 'dark', fonts: '' } };
 let THEME = THEMES[store.get('theme', 'fantasy')] ? store.get('theme', 'fantasy') : 'fantasy';
@@ -312,7 +316,7 @@ function bindCommon(root) {
   $$('[data-dc]', root).forEach(b => b.onclick = () => copy(b.dataset.dc, `Copied Discord name ${b.dataset.dc}.`));
   $$('.thumb', root).forEach(i => i.onclick = () => lightbox(i.src));
   $$('[data-report]', root).forEach(b => b.onclick = async () => {
-    if (!confirm('Report this as a scam or spam? It gets hidden after 3 reports.')) return;
+    if (!confirm(T('Report this as a scam or spam? It gets hidden after 3 reports.'))) return;
     const [kind, id] = b.dataset.report.split(':');
     try { await api(`/api/report/${kind}/${id}`, {}); toast('Thanks, reported.'); b.remove(); } catch (e) { toast(e.message); }
   });
@@ -345,9 +349,12 @@ function renderNav() {
   ];
   $('#nav').innerHTML = items.map(([k, t, x]) => `<a href="#/${k}" class="${VIEW === k ? 'on' : ''}">${t}${x}</a>`).join('');
   const hr = $('#hright');
-  if (hr && !hr.childElementCount) {
-    hr.innerHTML = `<label for="theme">Theme</label><select id="theme">${Object.entries(THEMES).map(([k, t]) => `<option value="${k}">${esc(t.name)}</option>`).join('')}</select>`;
+  if (hr && hr.dataset.lang !== LANG) {
+    hr.dataset.lang = LANG;
+    hr.innerHTML = `<div class="langs" role="group" aria-label="Language">${Object.entries(LANGS).map(([k, l]) => `<button class="lng ${k === LANG ? 'on' : ''}" data-lang="${k}" title="${l.name}" aria-pressed="${k === LANG}"><img src="icons/flags/${l.flag}.svg" alt="${l.name}"></button>`).join('')}</div>
+      <label for="theme">Theme</label><select id="theme">${Object.entries(THEMES).map(([k, t]) => `<option value="${k}">${esc(t.name)}</option>`).join('')}</select>`;
     $('#theme').onchange = e => { THEME = e.target.value; store.set('theme', THEME); applyTheme(); if (VIEW === 'market') renderResults(true); };
+    $$('[data-lang]', hr).forEach(b => b.onclick = () => { LANG = b.dataset.lang; store.set('lang', LANG); startI18n(LANG); render(); });
   }
   if ($('#theme')) $('#theme').value = THEME;
   const tot = savedNew + mb;
@@ -818,11 +825,11 @@ function renderMineList() {
   $$('[data-act]', el).forEach(b => b.onclick = () => {
     const a = b.dataset.act, id = b.dataset.id;
     if (a === 'sold' || a === 'price') { EDIT = { id, mode: a }; renderMineList(); $('#edv')?.focus(); return; }
-    if (a === 'delete' && !confirm('Delete this listing?')) return;
+    if (a === 'delete' && !confirm(T('Delete this listing?'))) return;
     act('listing', id, { action: a });
   });
   $$('[data-wact]', el).forEach(b => b.onclick = () => {
-    if (b.dataset.wact === 'delete' && !confirm('Delete this request?')) return;
+    if (b.dataset.wact === 'delete' && !confirm(T('Delete this request?'))) return;
     act('wanted', b.dataset.id, { action: b.dataset.wact });
   });
   $$('[data-wgo]', el).forEach(a => a.onclick = e => { e.preventDefault(); goWanted(Wn.find(w => w.id === a.dataset.wgo)); });
@@ -857,6 +864,7 @@ function renderKeys() {
 }
 
 // ---------- start ----------
+startI18n(LANG);
 applyTheme();
 route();
 loadMarket();

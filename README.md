@@ -13,14 +13,14 @@ Prodejce vloží screenshot, staty se přečtou samy a nabídka jde ven. Kupují
 - **Poptávky (WTB)**: kupující vystaví, co shání. Prodejce při vystavování hned vidí, kdo jeho artefakt chce a za kolik.
 - **Moje**: prodáno (s cenou do historie), obnovit, změnit cenu, smazat. Bez účtů, klíč k úpravám drží prohlížeč; jde ho zálohovat a přenést na jiné zařízení.
 - Nahlašování (3 nahlášení = skryto), denní limity na IP, nabídka vyprší po 14 dnech.
-- UI je jen anglicky.
+- **Jazyky** (vlajky vedle Theme): angličtina (výchozí), Deutsch, Türkçe, čeština. Zdrojové texty v `app.js` jsou anglicky, `public/i18n.js` je po vykreslení přeloží podle slovníku a vzorů s čísly (MutationObserver). Názvy statů, nicky a poznámky se nepřekládají. Nový text v UI = přidat ho do slovníku v `i18n.js`. Vlajky jsou z circle-flags (MIT, `public/icons/flags`).
 - **Motivy** (přepínač v hlavičce): Dark Fantasy (výchozí, Metin2), Cosmic, Cyberpunk, Gothic, Coquette, Luxury, Dreamcore, Y2K. Každý má vlastní písma (Google Fonts, načítají se jen pro zvolený motiv), tvar karet, pozadí a jemné animace (`public/fx.js` = canvas částice). Definice motivů jsou v `index.html` (`window.PAM_THEMES`), barvy a detaily v `style.css`. Respektuje `prefers-reduced-motion`.
 - **Demo artefakty**: dokud je na marketu méně než 10 skutečných nabídek, přimíchá se 40 demo artefaktů (generované v prohlížeči, nejsou v databázi), aby šlo vyzkoušet hledání. Vypíná se konstantou `DEMO_UNTIL` v `public/app.js`.
 
 ## Struktura
 
 ```
-public/          statické soubory (index.html, app.js, ocr.js, fx.js, bonuses.js, style.css)
+public/          statické soubory (index.html, app.js, i18n.js, ocr.js, fx.js, bonuses.js, style.css)
 src/worker.js    API + servírování public/, databáze D1 (binding DB)
 wrangler.jsonc   konfigurace Cloudflare Workers
 ```
