@@ -47,7 +47,14 @@ const ago = t => {
 };
 // cena s ikonkou yangu, Discord kontakt s ikonkou
 const yangHTML = v => `<img class="coin" src="icons/yang.png" alt="">${fmtYang(v)}<span class="cur">yang</span>`;
-const discordHTML = d => d ? `<button class="dc" data-dc="${esc(d)}" title="Discord: ${esc(d)} (click to copy)"><img src="icons/discord.svg" alt="Discord"><span>${esc(d)}</span></button>` : '';
+const discordHTML = d => d ? `<button class="dc" data-dc="${esc(d)}" title="Discord: ${esc(d)} (click to copy)"><img src="icons/discord.png" alt="Discord"><span>${esc(d)}</span></button>` : '';
+// jak dlouho je nabídka venku: „posted 2 min ago“ / „renewed 1 h ago“, živě se přepočítává
+const TTL_MS = 14 * 86400e3;
+const fmtDate = t => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const left = t => { const d = (t + TTL_MS - Date.now()) / 86400e3; return d <= 0 ? 'expired' : d < 1 ? `expires in ${Math.max(1, Math.round(d * 24))} h` : `expires in ${Math.round(d)} ${Math.round(d) === 1 ? 'day' : 'days'}`; };
+const timeLabel = (c, b) => (b && c && b - c > 60e3 ? 'renewed ' : 'posted ') + ago(b || c);
+const timeHTML = (c, b, cls = 'age') => `<span class="${cls}" data-tc="${c}" data-tb="${b || c}" title="Posted ${fmtDate(c)}${b && b - c > 60e3 ? `, renewed ${fmtDate(b)}` : ''} · ${left(b || c)}">${timeLabel(c, b)}</span>`;
+setInterval(() => $$('[data-tc]').forEach(e => { e.textContent = timeLabel(+e.dataset.tc, +e.dataset.tb) + (e.dataset.exp ? ' · ' + left(+e.dataset.tb) : ''); }), 30000);
 const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const plural = (n, w, pl) => `${n} ${n === 1 ? w : (pl || w + 's')}`;
 const bName = b => b.s;
@@ -236,7 +243,7 @@ function cardHTML(l, m, rows, opts = {}) {
   const priceTxt = l.p == null ? `<span class="price none">Make an offer</span>` : `<span class="price">${yangHTML(l.p)}</span>`;
   const img = opts.thumbUrl || (l.i ? `/api/img/${l.id}` : '');
   return `<article class="card ${l.demo ? 'demo' : ''}" data-id="${esc(l.id)}"${opts.i != null ? ` style="--i:${Math.min(opts.i, 14)}"` : ''}>
-    <div class="chead">${priceTxt}${l.r != null ? `<span class="rk">rank ${l.r}</span>` : ''}<span class="age">${l.demo ? 'demo' : l.c ? ago(l.b || l.c) : ''}</span></div>
+    <div class="chead">${priceTxt}${l.r != null ? `<span class="rk">rank ${l.r}</span>` : ''}${l.demo ? `<span class="age">demo</span>` : l.c ? timeHTML(l.c, l.b) : ''}</div>
     ${searched ? wantHTML(m, rows) : ''}
     ${rest.length ? `${searched ? `<div class="oh">Other bonuses</div>` : ''}<div class="lines">${rest.map(([id, v]) => lineHTML(id, v)).join('')}</div>` : ''}
     <div class="grow"></div>
@@ -697,7 +704,7 @@ function renderWantedList() {
   el.innerHTML = `<div class="rhead"><h2>${plural(D.wanted.length, 'wanted request')}</h2>
       ${myL.length ? `<label class="chk" style="margin:0"><input type="checkbox" id="wonly" ${wOnlyMine ? 'checked' : ''}> only where my artifact fits</label>` : ''}</div>
     ${list.length ? `<div class="wcards">${list.map(({ w, fit, cnt }) => `<article class="wcard">
-      <div class="chead">${w.p != null ? `<span class="price"><span class="upto">up to</span>${yangHTML(w.p)}</span>` : `<span class="price none">Price open</span>`}<span class="age">${ago(w.b)}</span></div>
+      <div class="chead">${w.p != null ? `<span class="price"><span class="upto">up to</span>${yangHTML(w.p)}</span>` : `<span class="price none">Price open</span>`}${timeHTML(w.c, w.b)}</div>
       <div class="lines">${wantLines(w)}</div>
       ${w.k < w.w.length ? `<span class="mut sm">${w.k} of ${w.w.length} is enough</span>` : ''}
       ${w.t ? `<p class="note">${esc(w.t)}</p>` : ''}
@@ -737,7 +744,7 @@ function renderMineList() {
       const fits = l.st === 'active' ? D.wanted.filter(w => !isMine('wanted', w.id) && wantFits(w, l)) : [];
       const ed = EDIT && EDIT.id === l.id ? EDIT.mode : '';
       return `<div class="mi"><div><div class="row" style="gap:12px"><span class="price ${l.p == null ? 'none' : ''}">${l.p == null ? 'offers' : yangHTML(l.p)}</span>
-          <span class="st ${l.st}">${statusTxt(l.st)}${l.st === 'sold' && l.sp != null ? ' for ' + fmtYang(l.sp) : ''}</span><span class="dim sm">${ago(l.b)}</span></div>
+          <span class="st ${l.st}">${statusTxt(l.st)}${l.st === 'sold' && l.sp != null ? ' for ' + fmtYang(l.sp) : ''}</span>${l.st === 'active' ? `<span class="dim sm" data-exp="1" data-tc="${l.c}" data-tb="${l.b}" title="Posted ${fmtDate(l.c)}">${timeLabel(l.c, l.b)} · ${left(l.b)}</span>` : `<span class="dim sm">${timeLabel(l.c, l.b)}</span>`}</div>
           <div class="stl">${stl(l.s)}</div></div>
         <div class="acts">${l.st === 'active' ? `<button class="lnk" data-act="sold" data-id="${l.id}">mark sold</button><button class="lnk" data-act="price" data-id="${l.id}">change price</button>` : ''}
           ${l.st !== 'hidden' ? `<button class="lnk" data-act="bump" data-id="${l.id}">${l.st === 'active' ? 'renew' : 'list again'}</button>` : ''}
@@ -748,7 +755,7 @@ function renderMineList() {
       </div>`; }).join('')}</div>` : `<p class="mut">Nothing here yet. Listings you post from this browser show up here.</p>`}
     <div class="rhead" style="margin-top:28px"><h2>My wanted requests</h2><a href="#/wanted" class="sm">+ new request</a></div>
     ${Wn.length ? `<div class="mlist">${Wn.map(w => { const cnt = w.st === 'active' ? D.listings.filter(l => !isMine('listing', l.id) && wantFits(w, l)).length : 0;
-      return `<div class="mi"><div><div class="row" style="gap:12px"><span class="price ${w.p == null ? 'none' : ''}">${w.p == null ? 'price open' : '<span class="upto">up to</span>' + yangHTML(w.p)}</span><span class="st ${w.st}">${statusTxt(w.st)}</span><span class="dim sm">${ago(w.b)}</span></div>
+      return `<div class="mi"><div><div class="row" style="gap:12px"><span class="price ${w.p == null ? 'none' : ''}">${w.p == null ? 'price open' : '<span class="upto">up to</span>' + yangHTML(w.p)}</span><span class="st ${w.st}">${statusTxt(w.st)}</span>${w.st === 'active' ? `<span class="dim sm" data-exp="1" data-tc="${w.c}" data-tb="${w.b}" title="Posted ${fmtDate(w.c)}">${timeLabel(w.c, w.b)} · ${left(w.b)}</span>` : `<span class="dim sm">${timeLabel(w.c, w.b)}</span>`}</div>
         <div class="stl">${w.w.map(([id, min]) => `${esc(bName(BY_ID[id]))}${min ? ' <b>' + fmtNum(min) + '+</b>' : ''}`).join(' · ')}</div></div>
         <div class="acts">${cnt ? `<a href="#" data-wgo="${w.id}">${plural(cnt, 'listing')} match</a>` : ''}${w.st !== 'hidden' ? `<button class="lnk" data-wact="bump" data-id="${w.id}">renew</button>` : ''}<button class="lnk bad" data-wact="delete" data-id="${w.id}">delete</button></div></div>`; }).join('')}</div>`
       : `<p class="mut">No wanted requests.</p>`}`;
