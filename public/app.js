@@ -6,6 +6,7 @@ import { BONUSES, GROUPS, BY_ID, MAX_LINES } from './bonuses.js';
 import { readScreenshot, loadImg, makeThumb } from './ocr.js';
 import { setFx } from './fx.js';
 import { LANGS, T, startI18n, locale } from './i18n.js';
+import { STAT_NAMES } from './stat-names.js';
 
 // ---------- basics ----------
 const store = {
@@ -58,7 +59,9 @@ const timeHTML = (c, b, cls = 'age') => `<span class="${cls}" data-tc="${c}" dat
 setInterval(() => $$('[data-tc]').forEach(e => { e.textContent = timeLabel(+e.dataset.tc, +e.dataset.tb) + (e.dataset.exp ? ' · ' + left(+e.dataset.tb) : ''); }), 30000);
 const median = a => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
 const plural = (n, w, pl) => `${n} ${n === 1 ? w : (pl || w + 's')}`;
-const bName = b => b.s;
+// název statu v aktuálním jazyce (zprávy do hry zůstávají anglicky přes b.s)
+const bName = b => (LANG !== 'en' && STAT_NAMES[LANG]?.[b.id]) || b.s;
+const fold = s => String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 const W8 = { 3: 1, 2: 0.55, 1: 0 };
 const NICK_RE = /^[\p{L}\p{N}_\-.\[\]]{2,24}$/u;
 
@@ -79,15 +82,20 @@ function lightbox(src) {
 
 // ---------- data ----------
 let D = { now: Date.now(), listings: [], wanted: [], sold: [] };
-let loaded = false, loadErr = '';
+let loaded = false, loadErr = '', lastSig = '', DV = 0;      // DV = verze dat (cache výsledků)
 async function loadMarket(fresh) {
   try {
     const r = await fetch('/api/market' + (fresh ? '?t=' + Date.now() : ''));
     if (!r.ok) throw new Error(r.status);
-    D = await r.json(); loaded = true; loadErr = '';
+    const txt = await r.text(), sig = txt.replace(/^\{"now":\d+,/, '{');
+    if (loaded && !loadErr && sig === lastSig) return;          // nic nového, nepřekreslovat
+    D = JSON.parse(txt); lastSig = sig; loaded = true; loadErr = ''; DV++; memo.clear();
   } catch { loadErr = 'Could not load the market. Try reloading the page.'; }
   refresh();
 }
+// jednoduchá cache pro výpočty nad celým marketem (oblíbené, odznaky)
+const memo = new Map();
+const cached = (key, fn) => { const k = key + '|' + DV + '|' + hideDemo; if (!memo.has(k)) memo.set(k, fn()); return memo.get(k); };
 async function api(path, body, form) {
   const r = await fetch(path, form ? { method: 'POST', body: form } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => ({}));
@@ -197,7 +205,7 @@ function results(f, list = allListings()) {
 // favourites = uložené kombinace statů (dřív „watched searches“, stejný klíč v localStorage)
 let SAVED = store.get('saved', []);            // [{q, seen}]
 const saveSaved = () => store.set('saved', SAVED);
-const newFor = s => results(queryToF(s.q), D.listings).filter(x => x.l.c > s.seen && !isMine('listing', x.l.id)).length;
+const newFor = s => cached('new:' + s.q + ':' + s.seen + ':' + MINE.length, () => results(queryToF(s.q), D.listings).filter(x => x.l.c > s.seen && !isMine('listing', x.l.id)).length);
 
 // ---------- jazyk ----------
 let LANG = LANGS[store.get('lang', 'en')] ? store.get('lang', 'en') : 'en';
@@ -268,16 +276,16 @@ function wantLines(w) {
 function buyMsg(l, rows) {
   const ids = rows && rows.length ? rows.map(r => r.id) : [];
   const order = [...l.s].sort((a, b) => (ids.includes(b[0]) - ids.includes(a[0])) || (BY_ID[b[0]].w - BY_ID[a[0]].w));
-  const st = order.slice(0, 3).map(([id, v]) => `${bName(BY_ID[id])} ${fmtV(BY_ID[id], v)}`).join(', ');
+  const st = order.slice(0, 3).map(([id, v]) => `${BY_ID[id].s} ${fmtV(BY_ID[id], v)}`).join(', ');
   return `Hi, I'd like to buy your pet artifact (${st})${l.p != null ? ` for ${fmtYang(l.p).replace(' ', '')}` : ''}.`;
 }
 function sellMsg(w) {
   const mine = MINEDATA.listings.find(l => l.st === 'active' && wantFits(w, l));
   if (mine) {
-    const st = mine.s.filter(([id]) => w.w.some(x => x[0] === id)).map(([id, v]) => `${bName(BY_ID[id])} ${fmtV(BY_ID[id], v)}`).join(', ');
+    const st = mine.s.filter(([id]) => w.w.some(x => x[0] === id)).map(([id, v]) => `${BY_ID[id].s} ${fmtV(BY_ID[id], v)}`).join(', ');
     return `Hi, I have a pet artifact for your request (${st})${mine.p != null ? `, ${fmtYang(mine.p).replace(' ', '')}` : ''}.`;
   }
-  return `Hi, I saw your pet artifact request (${w.w.map(([id]) => bName(BY_ID[id])).join(', ')}). I might have one for you.`;
+  return `Hi, I saw your pet artifact request (${w.w.map(([id]) => BY_ID[id].s).join(', ')}). I might have one for you.`;
 }
 function openContact({ nick, discord, msg, role }) {
   $('.modal')?.remove();
@@ -327,8 +335,9 @@ let VIEW = 'market';
 function route() {
   const h = location.hash.replace(/^#\/?/, '');
   const [v, qs] = h.split('?');
-  VIEW = ['market', 'sell', 'wanted', 'mine'].includes(v) ? v : 'market';
+  VIEW = ['market', 'sell', 'wanted', 'mine', 'admin'].includes(v) ? v : 'market';
   if (VIEW === 'market' && qs) { F = queryToF(qs); saveF(); history.replaceState(null, '', '#/market'); }
+  if (VIEW === 'admin') { ADM_ERR = new URLSearchParams(qs || '').get('e') || ''; if (qs) history.replaceState(null, '', '#/admin'); }
   render();
 }
 addEventListener('hashchange', route);
@@ -346,15 +355,17 @@ function renderNav() {
     ['sell', 'Sell', ''],
     ['wanted', 'Wanted', `<span class="n">${D.wanted.length}</span>`],
     ['mine', 'My listings', mb ? `<span class="new">${mb}</span>` : ''],
+    ...(ME ? [['admin', 'Admin', AD?.counts?.bugs ? `<span class="new" title="Open bug reports">${AD.counts.bugs}</span>` : '']] : []),
   ];
   $('#nav').innerHTML = items.map(([k, t, x]) => `<a href="#/${k}" class="${VIEW === k ? 'on' : ''}">${t}${x}</a>`).join('');
   const hr = $('#hright');
   if (hr && hr.dataset.lang !== LANG) {
     hr.dataset.lang = LANG;
-    hr.innerHTML = `<div class="langs" role="group" aria-label="Language">${Object.entries(LANGS).map(([k, l]) => `<button class="lng ${k === LANG ? 'on' : ''}" data-lang="${k}" title="${l.name}" aria-pressed="${k === LANG}"><img src="icons/flags/${l.flag}.svg" alt="${l.name}"></button>`).join('')}</div>
+    hr.innerHTML = `<button class="lnk sm bugbtn" id="bugbtn">Report a bug</button><div class="langs" role="group" aria-label="Language">${Object.entries(LANGS).map(([k, l]) => `<button class="lng ${k === LANG ? 'on' : ''}" data-lang="${k}" title="${l.name}" aria-pressed="${k === LANG}"><img src="icons/flags/${l.flag}.svg" alt="${l.name}"></button>`).join('')}</div>
       <label for="theme">Theme</label><select id="theme">${Object.entries(THEMES).map(([k, t]) => `<option value="${k}">${esc(t.name)}</option>`).join('')}</select>`;
     $('#theme').onchange = e => { THEME = e.target.value; store.set('theme', THEME); applyTheme(); if (VIEW === 'market') renderResults(true); };
     $$('[data-lang]', hr).forEach(b => b.onclick = () => { LANG = b.dataset.lang; store.set('lang', LANG); startI18n(LANG); render(); });
+    $('#bugbtn').onclick = openBug;
   }
   if ($('#theme')) $('#theme').value = THEME;
   const tot = savedNew + mb;
@@ -362,14 +373,14 @@ function renderNav() {
 }
 function render() {
   renderNav();
-  ({ market: renderMarket, sell: renderSell, wanted: renderWanted, mine: renderMine })[VIEW]($('#main'));
+  ({ market: renderMarket, sell: renderSell, wanted: renderWanted, mine: renderMine, admin: renderAdmin })[VIEW]($('#main'));
 }
 // after data loads, only re-render the parts without half-typed inputs
 function refresh() {
   renderNav();
   if (VIEW === 'market') { renderFavs(); renderResults(); }
   else if (VIEW === 'wanted') renderWantedList();
-  else if (VIEW === 'mine') renderMineList();
+  else if (VIEW === 'mine') { if (!EDIT) renderMineList(); }        // rozepsanou cenu nepřepisovat
   else if (VIEW === 'sell') renderSellSide();
 }
 
@@ -421,7 +432,7 @@ function renderFavs() {
   const cur = fToQuery(F), has = F.rows.length > 0, saved = SAVED.some(s => s.q === cur);
   el.innerHTML = `<div class="favh"><h3>Favourites</h3>${SAVED.length ? `<span class="dim sm">${SAVED.length}</span>` : ''}<span class="sp"></span>
       <button class="lnk sm" id="favsave" ${!has || saved ? 'disabled' : ''} title="Save the stats you picked below">${saved ? '★ saved' : '☆ save current'}</button></div>
-    ${SAVED.length ? `<div class="favlist">${SAVED.map((s, i) => { const f = queryToF(s.q), rows = rowsOf(f.rows), nw = newFor(s), cnt = results(f).length;
+    ${SAVED.length ? `<div class="favlist">${SAVED.map((s, i) => { const f = queryToF(s.q), rows = rowsOf(f.rows), nw = newFor(s), cnt = cached('cnt:' + s.q, () => results(f).length);
       return `<div class="fav ${s.q === cur ? 'on' : ''}" data-fav="${i}" tabindex="0">
         <div class="favtop"><span class="st">★</span><span class="fc">${nw ? `<span class="new">${nw} new</span>` : `${plural(cnt, 'match', 'matches')}`}</span>
           ${f.need && f.need < rows.length ? `<span class="dim sm">${f.need} of ${rows.length}</span>` : ''}${f.maxp ? `<span class="dim sm">≤ ${esc(f.maxp)}</span>` : ''}<span class="sp"></span><button class="x" data-favdel="${i}" title="Remove from favourites">×</button></div>
@@ -434,7 +445,7 @@ function renderFavs() {
     renderFavs(); renderNav();
   };
   $$('[data-fav]', el).forEach(d => {
-    const go = () => { const s = SAVED[+d.dataset.fav]; F = queryToF(s.q); s.seen = Date.now(); saveSaved(); filterChanged(true); renderNav(); };
+    const go = () => { const s = SAVED[+d.dataset.fav]; F = queryToF(s.q); s.seen = Date.now(); memo.clear(); saveSaved(); filterChanged(true); renderNav(); };
     d.onclick = e => { if (!e.target.closest('[data-favdel]')) go(); };
     d.onkeydown = e => { if (e.key === 'Enter') go(); };
   });
@@ -449,14 +460,14 @@ function renderPicked() {
 }
 function renderStatList() {
   const el = $('#statlist'); if (!el) return;
-  const q = statQ.trim().toLowerCase().replace(/^vs\.?\s*/, '');
+  const q = fold(statQ.trim()).replace(/^vs\.?\s*/, '');
   const on = new Map(F.rows.map(r => [r.id, r]));
-  const hit = b => !q || b.s.toLowerCase().includes(q) || b.name.toLowerCase().includes(q);
+  const hit = b => !q || fold(b.s).includes(q) || fold(b.name).includes(q) || fold(bName(b)).includes(q);
   const html = GROUPS.map((g, gi) => {
     const bs = BONUSES.filter(b => b.g === g.id && hit(b)); if (!bs.length) return '';
     return `<div class="sg"><div class="sgh"><span>${esc(g.en)}</span>${gi === 0 || q ? '<span class="mn">min</span>' : ''}</div>${bs.map(b => { const r = on.get(b.id);
       return `<div class="sitem ${r ? 'on' : ''}" data-row="${b.id}">
-        <button class="tg" data-pick="${b.id}" title="${esc(b.name)}"><span class="ck">${r ? '✓' : '+'}</span><span class="nm ${b.c ? 'c-' + b.c : ''}">${esc(bName(b))}</span></button>
+        <button class="tg" data-pick="${b.id}" title="${esc(bName(b) === b.s ? b.name : bName(b) + ' · ' + b.name)}"><span class="ck">${r ? '✓' : '+'}</span><span class="nm ${b.c ? 'c-' + b.c : ''}">${esc(bName(b))}</span></button>
         <input data-min="${b.id}" type="text" inputmode="decimal" autocomplete="off" placeholder="${r ? 'any' : 'min'}" value="${esc(r ? r.min : '')}" title="Minimum ${esc(bName(b))} (${esc(rangeTxt(b))})">
         <span class="rg">/ ${fmtNum(b.max)}${unitTxt(b)}</span></div>`; }).join('')}</div>`;
   }).join('');
@@ -863,10 +874,129 @@ function renderKeys() {
   };
 }
 
+// ============================================================
+//  NAHLÁŠENÍ CHYBY (pro všechny)
+// ============================================================
+function openBug() {
+  $('.modal')?.remove();
+  const d = document.createElement('div'); d.className = 'modal';
+  d.innerHTML = `<div class="mbox" role="dialog" aria-label="Report a bug">
+    <div class="row"><h2 style="margin:0">Report a bug</h2><span class="sp"></span><button class="x" data-close title="Close">×</button></div>
+    <p class="hint" style="margin:6px 0 12px">Something broken or confusing? Tell us what you did and what happened. The page you are on, language, theme and browser are sent along automatically.</p>
+    <label class="f" for="bugtext">What happened?</label><textarea id="bugtext" rows="5" maxlength="2000" placeholder="e.g. I pasted a screenshot and Max. HP was read wrong"></textarea>
+    <label class="f" for="bugcontact">Your nick or Discord <span class="dim">(optional, if we should reply)</span></label><input id="bugcontact" maxlength="60" value="${esc(me.contact || me.nick || '')}">
+    <p class="err" id="bugerr"></p>
+    <div class="row"><span class="sp"></span><button class="btn pri" id="bugsend">Send report</button></div></div>`;
+  document.body.appendChild(d);
+  const close = () => { d.remove(); removeEventListener('keydown', k); };
+  const k = e => { if (e.key === 'Escape') close(); }; addEventListener('keydown', k);
+  d.onclick = e => { if (e.target === d || e.target.closest('[data-close]')) close(); };
+  $('#bugtext', d).focus();
+  $('#bugsend', d).onclick = async () => {
+    const text = $('#bugtext', d).value.trim(), errEl = $('#bugerr', d);
+    if (text.length < 5) { errEl.textContent = 'Describe the problem in a few words'; return; }
+    $('#bugsend', d).disabled = true;
+    try {
+      await api('/api/bugs', { text, contact: $('#bugcontact', d).value.trim(),
+        info: { view: VIEW, lang: LANG, theme: THEME, screen: `${innerWidth}×${innerHeight}`, ua: navigator.userAgent, url: location.pathname + location.hash } });
+      close(); toast('Thanks! The bug report was sent.');
+    } catch (e) { errEl.textContent = e.message; $('#bugsend', d).disabled = false; }
+  };
+}
+
+// ============================================================
+//  ADMIN (Discord přihlášení; první přihlášený je owner)
+// ============================================================
+let ME = null, CONFIGURED = true, AD = null, ADM_ERR = '', bugFilter = 'open';
+async function loadMe() {
+  try { const j = await (await fetch('/api/auth/me', { cache: 'no-store' })).json(); ME = j.admin || null; CONFIGURED = j.configured; }
+  catch { ME = null; }
+  if (ME) await loadAdmin(); else { renderNav(); if (VIEW === 'admin') renderAdmin($('#main')); }
+}
+async function loadAdmin() {
+  try { const r = await fetch('/api/admin/overview', { cache: 'no-store' }); if (r.status === 401) { ME = null; AD = null; } else AD = await r.json(); }
+  catch { AD = null; }
+  renderNav(); if (VIEW === 'admin') renderAdminBody();
+}
+const avatarURL = a => a.avatar ? `https://cdn.discordapp.com/avatars/${a.id}/${a.avatar}.png?size=64` : 'icons/discord.png';
+const ADM_ERRS = {
+  denied: 'This Discord account is not an admin. Ask the owner to add your Discord ID.',
+  config: 'Discord login is not set up yet: add DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET in Cloudflare.',
+  state: 'The login expired or was opened in another tab. Try again.',
+  discord: 'Discord did not confirm the login. Try again.',
+};
+function renderAdmin(main) {
+  main.innerHTML = `<div class="view v-admin"><section class="body" id="adm"></section></div>`;
+  renderAdminBody();
+  if (ME) loadAdmin();
+}
+function renderAdminBody() {
+  const el = $('#adm'); if (!el) return;
+  if (!ME) {
+    el.innerHTML = `<div class="adlogin"><h2>Admin</h2>
+      <p class="mut">Only for the people who run this market. Log in with Discord to see bug reports and reported listings.</p>
+      ${ADM_ERR ? `<p class="err">${esc(ADM_ERRS[ADM_ERR] || 'Login failed. Try again.')}</p>` : ''}
+      ${CONFIGURED ? `<a class="btn pri dlogin" href="/api/auth/login"><img src="icons/discord.png" alt="" width="18" height="18"> Log in with Discord</a>`
+        : `<p class="err">${esc(ADM_ERRS.config)}</p>`}</div>`;
+    return;
+  }
+  if (!AD) { el.innerHTML = `<div class="empty">Loading…</div>`; return; }
+  const c = AD.counts || {}, owner = ME.role === 'owner';
+  const bugs = AD.bugs.filter(b => bugFilter === 'all' || b.status === bugFilter);
+  const itemTop = (x, kind) => `<div class="mstat"><span class="stchip ${x.st === 'hidden' ? 'hidden' : 'active'}">${x.st === 'hidden' ? 'hidden' : 'live'}</span><span class="dim sm">${plural(x.rep, 'report')}</span></div>`;
+  const itemFoot = (x, kind) => `<div class="cfoot macts"><span class="dim">${kind === 'wanted' ? 'Buyer' : 'Seller'}</span><b>${esc(x.n)}</b><span class="sp"></span>
+    ${x.st === 'hidden' ? `<button class="lnk" data-mod="restore" data-k="${kind}" data-id="${x.id}">restore</button>` : `<button class="lnk" data-mod="hide" data-k="${kind}" data-id="${x.id}">hide</button>`}
+    <button class="lnk bad" data-mod="delete" data-k="${kind}" data-id="${x.id}">delete</button></div>`;
+  el.innerHTML = `<div class="admhead"><img class="av" src="${esc(avatarURL(ME))}" alt=""><div><b>${esc(ME.name || ME.id)}</b><div class="dim sm">${ME.role === 'owner' ? 'owner' : 'admin'}</div></div><span class="sp"></span>
+      <button class="lnk" id="admreload">refresh</button><button class="lnk mut" id="logout">Log out</button></div>
+    <div class="adstats">${[['live', c.live, 'live listings'], ['wanted', c.wanted, 'wanted requests'], ['sold', c.sold, 'sold'], ['today', c.today, 'new in 24 h'], ['bugs', c.bugs, 'open bugs']]
+      .map(([k, v, t]) => `<div class="ast ${k === 'bugs' && v ? 'hot' : ''}"><b>${v ?? 0}</b><span>${t}</span></div>`).join('')}</div>
+    <div class="admgrid">
+      <section>
+        <div class="rhead"><h2>Bug reports</h2><select id="bugf" class="sm">${[['open', 'open'], ['fixed', 'fixed'], ['all', 'all']].map(([k, t]) => `<option value="${k}" ${bugFilter === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+        ${bugs.length ? `<div class="bugs">${bugs.map(b => `<article class="bug ${b.status}">
+          <div class="row sm"><span class="stchip ${b.status === 'open' ? 'hidden' : 'active'}">${b.status}</span><span class="dim">${ago(b.created)}</span><span class="sp"></span>
+            ${b.status === 'open' ? `<button class="lnk" data-bug="fixed" data-id="${b.id}">mark fixed</button>` : `<button class="lnk" data-bug="open" data-id="${b.id}">reopen</button>`}
+            <button class="lnk bad" data-bug="delete" data-id="${b.id}">delete</button></div>
+          <p class="bugtext">${esc(b.text)}</p>
+          ${b.contact ? `<div class="sm">Contact: <b>${esc(b.contact)}</b></div>` : ''}
+          <div class="buginfo">${['view', 'lang', 'theme', 'screen', 'url'].filter(k => b.info?.[k]).map(k => `<span>${k}: <b>${esc(b.info[k])}</b></span>`).join('')}${b.info?.ua ? `<span class="ua" title="${esc(b.info.ua)}">${esc(b.info.ua)}</span>` : ''}</div>
+        </article>`).join('')}</div>` : `<p class="mut">No ${bugFilter === 'all' ? '' : bugFilter + ' '}bug reports.</p>`}
+      </section>
+      <section>
+        <div class="rhead"><h2>Reported listings</h2></div>
+        ${AD.listings.length ? `<div class="cards">${AD.listings.map(l => cardHTML(l, null, null, { top: itemTop(l, 'listing'), foot: itemFoot(l, 'listing') })).join('')}</div>` : `<p class="mut">Nothing reported.</p>`}
+        ${AD.wanted.length ? `<div class="rhead" style="margin-top:20px"><h2>Reported wanted requests</h2></div><div class="wcards">${AD.wanted.map(w => `<article class="wcard">${itemTop(w, 'wanted')}<div class="lines">${wantLines(w)}</div>${w.t ? `<p class="note">${esc(w.t)}</p>` : ''}${itemFoot(w, 'wanted')}</article>`).join('')}</div>` : ''}
+      </section>
+      <aside>
+        <div class="rhead"><h2>Admins</h2></div>
+        <div class="adlist">${AD.admins.map(a => `<div class="adm"><img class="av" src="${esc(avatarURL(a))}" alt=""><div class="grow"><b>${esc(a.name || 'waiting for first login')}</b><div class="dim sm">${esc(a.id)}${a.role === 'owner' ? ' · owner' : ''}${a.note ? ' · ' + esc(a.note) : ''}</div></div>
+          ${owner && a.role !== 'owner' ? `<button class="x" data-rmadm="${esc(a.id)}" title="Remove admin">×</button>` : ''}</div>`).join('')}</div>
+        ${owner ? `<label class="f" for="newadm">Add admin by Discord user ID</label><div class="row"><input id="newadm" inputmode="numeric" placeholder="e.g. 123456789012345678"><button class="btn" id="addadm">Add</button></div>
+          <input id="newadmnote" placeholder="note, e.g. who it is" maxlength="60" style="margin-top:6px">
+          <p class="hint">In Discord: Settings → Advanced → Developer Mode on, then right-click the person → Copy User ID. They become admin the first time they log in here.</p><p class="err" id="admerr"></p>` : ''}
+      </aside>
+    </div>`;
+  bindCommon(el);
+  const act = async (path, b, msg) => { try { await api(path, b); if (msg) toast(msg); await loadAdmin(); } catch (e) { toast(e.message); } };
+  $('#admreload').onclick = loadAdmin;
+  $('#logout').onclick = async () => { try { await api('/api/auth/logout', {}); } catch {} ME = null; AD = null; renderNav(); renderAdminBody(); };
+  $('#bugf').onchange = e => { bugFilter = e.target.value; renderAdminBody(); };
+  $$('[data-bug]', el).forEach(b => b.onclick = () => { if (b.dataset.bug === 'delete' && !confirm(T('Delete this bug report?'))) return; act('/api/admin/bugs/' + b.dataset.id, { action: b.dataset.bug }); });
+  $$('[data-mod]', el).forEach(b => b.onclick = () => { if (b.dataset.mod === 'delete' && !confirm(T('Delete it for good?'))) return; act(`/api/admin/${b.dataset.k}/${b.dataset.id}`, { action: b.dataset.mod }).then(() => loadMarket(true)); });
+  $$('[data-rmadm]', el).forEach(b => b.onclick = () => { if (confirm(T('Remove this admin?'))) act('/api/admin/admins', { action: 'remove', id: b.dataset.rmadm }); });
+  $('#addadm')?.addEventListener('click', async () => {
+    const id = $('#newadm').value.trim();
+    if (!/^\d{15,25}$/.test(id)) { $('#admerr').textContent = T('Enter a Discord user ID (a long number)'); return; }
+    act('/api/admin/admins', { action: 'add', id, note: $('#newadmnote').value.trim() }, T('Admin added'));
+  });
+}
+
 // ---------- start ----------
 startI18n(LANG);
 applyTheme();
 route();
 loadMarket();
 loadMine();
+loadMe();
 setInterval(() => { if (document.visibilityState === 'visible') loadMarket(); }, 60000);

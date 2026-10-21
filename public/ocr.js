@@ -3,6 +3,7 @@
 //  Převzato z Metin Max Rolls + výřez tooltipu jako důkaz pro kupující.
 // ============================================================
 import { BONUSES, MAX_LINES, OVER_MAX } from './bonuses.js';
+import { STAT_NAMES, GAME_ALIASES } from './stat-names.js';
 
 const CDN = 'https://cdn.jsdelivr.net/npm/';
 const TESS = CDN + 'tesseract.js@5.1.1/dist/tesseract.min.js';
@@ -12,6 +13,7 @@ export function loadTess() {
   if (tessLoading) return tessLoading;
   tessLoading = new Promise((ok, err) => {
     const s = document.createElement('script'); s.src = TESS; s.onload = ok;
+    s.integrity = 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F'; s.crossOrigin = 'anonymous';   // ověření, že CDN vrátil přesně tenhle soubor
     s.onerror = () => { tessLoading = null; err(new Error('net')); };
     document.head.appendChild(s);
   });
@@ -30,7 +32,7 @@ function prep(im, thr) {
   return { cv, sc };
 }
 
-export const norm = t => t.toLowerCase().replace(/[^a-z]/g, '');
+export const norm = t => t.normalize('NFD').toLowerCase().replace(/[^a-z]/g, '');
 const bigr = t => { const r = []; for (let i = 0; i < t.length - 1; i++) r.push(t.slice(i, i + 2)); return r; };
 const dice = (a, b) => {
   const A = bigr(a), B = bigr(b); if (!A.length || !B.length) return 0;
@@ -53,9 +55,14 @@ const ALIAS = {
   maxtp: 'hp', maxhp: 'hp', maxmp: 'sp', maxsp: 'sp', itemdrop: 'drop', expbonus: 'exp',
   skillspeed: 'sksp', fertigkeitsgeschwindigkeit: 'sksp', slowingchance: 'slow', verlangsamung: 'slow',
 };
+const BYID = Object.fromEntries(BONUSES.map(b => [b.id, b]));
+// angličtina + názvy z DE/TR/CZ klienta (screenshot z jinak nastavené hry se taky přečte)
 const POOL = BONUSES.map(b => ({ b, k: norm(b.name) }))
   .concat(BONUSES.map(b => ({ b, k: norm(b.s) })))
-  .concat(Object.entries(ALIAS).map(([k, id]) => ({ b: BONUSES.find(x => x.id === id), k })).filter(x => x.b));
+  .concat(Object.entries(ALIAS).map(([k, id]) => ({ b: BYID[id], k })).filter(x => x.b))
+  .concat(Object.values(STAT_NAMES).flatMap(m => Object.entries(m).map(([id, n]) => ({ b: BYID[id], k: norm(n.normalize('NFD')) }))))
+  .concat(Object.entries(GAME_ALIASES).flatMap(([id, ns]) => ns.map(n => ({ b: BYID[id], k: norm(n.normalize('NFD')) }))))
+  .filter(x => x.b && x.k.length >= 3);
 
 function bestBonus(namePart) {
   const words = namePart.replace(/[^A-Za-zÀ-ž%. ]/g, ' ').split(/\s+/).filter(w => w.length > 1);
