@@ -4,6 +4,7 @@
 // ============================================================
 import { BONUSES, GROUPS, BY_ID, MAX_LINES } from './bonuses.js';
 import { readScreenshot, loadImg, makeThumb } from './ocr.js';
+import { setFx } from './fx.js';
 
 // ---------- basics ----------
 const store = {
@@ -187,17 +188,18 @@ let SAVED = store.get('saved', []);            // [{q, seen}]
 const saveSaved = () => store.set('saved', SAVED);
 const newFor = s => results(queryToF(s.q), D.listings).filter(x => x.l.c > s.seen && !isMine('listing', x.l.id)).length;
 
-// ---------- themes ----------
-const THEMES = [['system', 'System'], ['dark', 'Dark'], ['light', 'Light'], ['midnight', 'Midnight'], ['warm', 'Warm']];
-let THEME = store.get('theme', 'system');
-const mqLight = matchMedia('(prefers-color-scheme: light)');
+// ---------- themes (definice v index.html → window.PAM_THEMES) ----------
+const THEMES = window.PAM_THEMES || { fantasy: { name: 'Dark Fantasy', mode: 'dark', fonts: '' } };
+let THEME = THEMES[store.get('theme', 'fantasy')] ? store.get('theme', 'fantasy') : 'fantasy';
 function applyTheme() {
-  const t = THEME === 'system' ? (mqLight.matches ? 'light' : 'dark') : THEME;
-  document.documentElement.dataset.theme = t;
-  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
-  let m = $('meta[name="theme-color"]'); if (m && bg) m.content = bg;
+  const c = THEMES[THEME], d = document.documentElement;
+  d.dataset.theme = THEME; d.dataset.mode = c.mode;
+  const l = $('#themefont'); const href = 'https://fonts.googleapis.com/css2?family=' + c.fonts + '&display=swap';
+  if (l && c.fonts && l.href !== href) l.href = href;
+  const bg = getComputedStyle(d).getPropertyValue('--bg').trim();
+  const m = $('meta[name="theme-color"]'); if (m && bg) m.content = bg;
+  setFx(THEME);
 }
-mqLight.addEventListener?.('change', () => { if (THEME === 'system') applyTheme(); });
 
 // ---------- components ----------
 function bonusSelect(cls, i, val, taken) {
@@ -230,7 +232,7 @@ function cardHTML(l, m, rows, opts = {}) {
   const own = isMine('listing', l.id);
   const priceTxt = l.p == null ? `<span class="price none">Make an offer</span>` : `<span class="price">${fmtYang(l.p)}</span>`;
   const img = opts.thumbUrl || (l.i ? `/api/img/${l.id}` : '');
-  return `<article class="card ${l.demo ? 'demo' : ''}" data-id="${esc(l.id)}">
+  return `<article class="card ${l.demo ? 'demo' : ''}" data-id="${esc(l.id)}"${opts.i != null ? ` style="--i:${Math.min(opts.i, 14)}"` : ''}>
     <div class="chead">${priceTxt}${l.r != null ? `<span class="rk">rank ${l.r}</span>` : ''}<span class="age">${l.demo ? 'demo' : l.c ? ago(l.b || l.c) : ''}</span></div>
     ${searched ? wantHTML(m, rows) : ''}
     ${rest.length ? `${searched ? `<div class="oh">Other bonuses</div>` : ''}<div class="lines">${rest.map(([id, v]) => lineHTML(id, v)).join('')}</div>` : ''}
@@ -285,8 +287,8 @@ function renderNav() {
   $('#nav').innerHTML = items.map(([k, t, x]) => `<a href="#/${k}" class="${VIEW === k ? 'on' : ''}">${t}${x}</a>`).join('');
   const hr = $('#hright');
   if (hr && !hr.childElementCount) {
-    hr.innerHTML = `<label for="theme">Theme</label><select id="theme">${THEMES.map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select>`;
-    $('#theme').onchange = e => { THEME = e.target.value; store.set('theme', THEME); applyTheme(); };
+    hr.innerHTML = `<label for="theme">Theme</label><select id="theme">${Object.entries(THEMES).map(([k, t]) => `<option value="${k}">${esc(t.name)}</option>`).join('')}</select>`;
+    $('#theme').onchange = e => { THEME = e.target.value; store.set('theme', THEME); applyTheme(); if (VIEW === 'market') renderResults(true); };
   }
   if ($('#theme')) $('#theme').value = THEME;
   const tot = savedNew + mb;
@@ -329,7 +331,7 @@ function renderMarket(main) {
     const id = first.dataset.row; e.target.value = statQ = '';
     toggleStat(id); focusMin(id);
   };
-  renderFavs(); renderPicked(); renderStatList(); renderToolbar(); renderResults();
+  renderFavs(); renderPicked(); renderStatList(); renderToolbar(); renderResults(true);
 }
 function focusMin(id) {
   const x = $(`#statlist [data-min="${id}"]`); if (!x) return;
@@ -339,7 +341,7 @@ function focusMin(id) {
 function filterChanged(full) {
   saveF();
   if (full) { renderPicked(); renderStatList(); renderToolbar(); }
-  renderFavs(); renderResults();
+  renderFavs(); renderResults(full);
 }
 function toggleStat(id) {
   const i = F.rows.findIndex(r => r.id === id);
@@ -427,9 +429,11 @@ function renderToolbar() {
     WF.rows = r.map(x => ({ id: x.id, min: x.min || '' })); WF.need = F.need; WF.maxp = F.maxp; saveWF(); location.hash = '#/wanted';
   };
 }
-function renderResults() {
+let resultsShown = false;
+function renderResults(animate) {
   const el = $('#results'); if (!el) return;
   if (!loaded) { el.innerHTML = `<div class="empty">${loadErr || 'Loading the market…'}</div>`; return; }
+  if (!resultsShown) { animate = true; resultsShown = true; }   // první zobrazení po načtení dat
   const list = results(F), rows = rowsOf(F.rows);
   const real = list.filter(x => !x.l.demo);
   const prices = real.map(x => x.l.p).filter(p => p != null);
@@ -444,7 +448,7 @@ function renderResults() {
     body = `<div class="empty"><p>${allListings().length ? 'Nothing matches yet.' : 'The market is empty so far.'}</p>
       <p>${rows.length ? `${rows.length > 1 ? `Try “at least 1 of ${rows.length}”, lower a minimum, ` : 'Lower the minimum, '}save it to favourites to spot new matches, or <button class="lnk" id="ewtb">post it as wanted</button> so sellers find you.` : `<a href="#/sell">List the first artifact</a>`}</p></div>`;
   } else {
-    body = `<div class="cards">${list.slice(0, 300).map(x => cardHTML(x.l, x.m, rows)).join('')}</div>
+    body = `<div class="cards ${animate ? 'reveal' : ''}">${list.slice(0, 300).map((x, i) => cardHTML(x.l, x.m, rows, { i })).join('')}</div>
       ${list.length > 300 ? `<p class="hint">Showing the first 300. Narrow the search.</p>` : ''}`;
   }
   el.innerHTML = head + demoNote + body;
