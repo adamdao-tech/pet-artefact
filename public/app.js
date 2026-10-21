@@ -244,22 +244,70 @@ function cardHTML(l, m, rows, opts = {}) {
   const img = opts.thumbUrl || (l.i ? `/api/img/${l.id}` : '');
   return `<article class="card ${l.demo ? 'demo' : ''}" data-id="${esc(l.id)}"${opts.i != null ? ` style="--i:${Math.min(opts.i, 14)}"` : ''}>
     <div class="chead">${priceTxt}${l.r != null ? `<span class="rk">rank ${l.r}</span>` : ''}${l.demo ? `<span class="age">demo</span>` : l.c ? timeHTML(l.c, l.b) : ''}</div>
+    ${opts.top || ''}
     ${searched ? wantHTML(m, rows) : ''}
     ${rest.length ? `${searched ? `<div class="oh">Other bonuses</div>` : ''}<div class="lines">${rest.map(([id, v]) => lineHTML(id, v)).join('')}</div>` : ''}
     <div class="grow"></div>
     ${img ? `<div class="shotbox"><img class="thumb" loading="lazy" src="${esc(img)}" alt="artifact screenshot" title="Click to enlarge"></div>`
       : `<div class="shotbox none">${l.demo ? 'demo, no screenshot' : 'no screenshot'}</div>`}
     ${l.t ? `<p class="note" title="${esc(l.t)}">${esc(l.t)}</p>` : ''}
-    <div class="cfoot">${l.demo ? `<span class="dim">Demo listing, not a real seller</span>`
-      : `<span class="dim">Seller</span><button class="nick" data-nick="${esc(l.n)}" title="Copy the nick, then whisper them in game">${esc(l.n || '…')}</button>${discordHTML(l.d)}`}
+    ${opts.foot != null ? opts.foot : `<div class="cfoot">${l.demo ? `<span class="dim">Demo listing, not a real seller</span>`
+      : `<span class="dim">Seller</span><button class="nick" data-contact="${esc(l.id)}" title="Whisper them in game">${esc(l.n || '…')}</button>${discordHTML(l.d)}`}
       <span class="sp"></span>
-      ${l.demo ? '' : own ? `<span class="tag">yours</span>` : opts.preview ? '' : `<button class="lnk mut sm" data-report="listing:${esc(l.id)}">report</button>`}</div>
+      ${l.demo ? '' : own ? `<span class="tag">yours</span>` : opts.preview ? '' : `<button class="lnk mut sm" data-report="listing:${esc(l.id)}">report</button><button class="btn sm ctc" data-contact="${esc(l.id)}">Contact</button>`}</div>`}
   </article>`;
 }
 function wantLines(w) {
   return w.w.map(([id, min]) => { const b = BY_ID[id]; return b ? `<div class="ln"><span class="nm">${esc(bName(b))}</span><span class="vl">${min ? fmtNum(min) + unitTxt(b) + '+' : 'any'}</span><span class="of"></span></div>` : ''; }).join('');
 }
+// zpráva pro prodejce/kupce: krátká, ať se vejde do chatu ve hře
+function buyMsg(l, rows) {
+  const ids = rows && rows.length ? rows.map(r => r.id) : [];
+  const order = [...l.s].sort((a, b) => (ids.includes(b[0]) - ids.includes(a[0])) || (BY_ID[b[0]].w - BY_ID[a[0]].w));
+  const st = order.slice(0, 3).map(([id, v]) => `${bName(BY_ID[id])} ${fmtV(BY_ID[id], v)}`).join(', ');
+  return `Hi, I'd like to buy your pet artifact (${st})${l.p != null ? ` for ${fmtYang(l.p).replace(' ', '')}` : ''}. Saw it on petart.daotech.dev`;
+}
+function sellMsg(w) {
+  const mine = MINEDATA.listings.find(l => l.st === 'active' && wantFits(w, l));
+  if (mine) {
+    const st = mine.s.filter(([id]) => w.w.some(x => x[0] === id)).map(([id, v]) => `${bName(BY_ID[id])} ${fmtV(BY_ID[id], v)}`).join(', ');
+    return `Hi, I have a pet artifact for your request (${st})${mine.p != null ? `, ${fmtYang(mine.p).replace(' ', '')}` : ''}. From petart.daotech.dev`;
+  }
+  return `Hi, I saw your pet artifact request (${w.w.map(([id]) => bName(BY_ID[id])).join(', ')}) on petart.daotech.dev. I might have one for you.`;
+}
+function openContact({ nick, discord, msg, role }) {
+  $('.modal')?.remove();
+  const d = document.createElement('div'); d.className = 'modal';
+  d.innerHTML = `<div class="mbox" role="dialog" aria-label="Contact ${esc(nick)}">
+    <div class="row"><h2 style="margin:0">Contact ${esc(nick)}</h2><span class="sp"></span><button class="x" data-close title="Close">×</button></div>
+    <p class="hint" style="margin:6px 0 14px">Whisper the ${role} in game: open the whisper window, put in the nick, then paste the message.</p>
+    <div class="step"><span class="sn">1</span><div class="sb"><div class="sl">In-game nick</div><div class="row"><b class="bignick">${esc(nick)}</b><span class="sp"></span><button class="btn" data-cp="nick">Copy nick</button></div></div></div>
+    <div class="step"><span class="sn">2</span><div class="sb"><div class="sl">Message <span class="dim">(you can edit it)</span></div><textarea id="cmsg" rows="3" maxlength="240">${esc(msg)}</textarea>
+      <div class="row" style="margin-top:6px"><span class="dim sm" id="clen"></span><span class="sp"></span><button class="btn pri" data-cp="msg">Copy message</button></div></div></div>
+    ${discord ? `<div class="step"><span class="sn"><img src="icons/discord.png" alt="" width="16" height="16"></span><div class="sb"><div class="sl">Or on Discord</div><div class="row"><b>${esc(discord)}</b><span class="sp"></span><button class="btn" data-cp="dc">Copy Discord name</button></div></div></div>` : ''}
+  </div>`;
+  document.body.appendChild(d);
+  const ta = $('#cmsg', d), len = () => { $('#clen', d).textContent = ta.value.length + ' characters'; };
+  ta.oninput = len; len();
+  d.onclick = e => { if (e.target === d || e.target.closest('[data-close]')) close(); };
+  const close = () => { d.remove(); removeEventListener('keydown', k); };
+  const k = e => { if (e.key === 'Escape') close(); }; addEventListener('keydown', k);
+  $$('[data-cp]', d).forEach(b => b.onclick = () => {
+    const w = b.dataset.cp;
+    copy(w === 'nick' ? nick : w === 'dc' ? discord : ta.value, w === 'nick' ? `Copied ${nick}` : w === 'dc' ? 'Copied Discord name' : 'Copied the message');
+    b.textContent = 'Copied ✓'; setTimeout(() => { b.textContent = w === 'nick' ? 'Copy nick' : w === 'dc' ? 'Copy Discord name' : 'Copy message'; }, 1600);
+  });
+  $('[data-cp="nick"]', d).focus();
+}
 function bindCommon(root) {
+  $$('[data-contact]', root).forEach(b => b.onclick = () => {
+    const l = D.listings.find(x => x.id === b.dataset.contact); if (!l) return;
+    openContact({ nick: l.n, discord: l.d, msg: buyMsg(l, VIEW === 'market' ? rowsOf(F.rows) : []), role: 'seller' });
+  });
+  $$('[data-wcontact]', root).forEach(b => b.onclick = () => {
+    const w = D.wanted.find(x => x.id === b.dataset.wcontact); if (!w) return;
+    openContact({ nick: w.n, discord: w.d, msg: sellMsg(w), role: 'buyer' });
+  });
   $$('[data-nick]', root).forEach(b => b.onclick = () => copy(b.dataset.nick, `Copied ${b.dataset.nick}. Whisper them in game.`));
   $$('[data-dc]', root).forEach(b => b.onclick = () => copy(b.dataset.dc, `Copied Discord name ${b.dataset.dc}.`));
   $$('.thumb', root).forEach(i => i.onclick = () => lightbox(i.src));
@@ -364,20 +412,24 @@ function toggleStat(id) {
 function renderFavs() {
   const el = $('#favs'); if (!el) return;
   const cur = fToQuery(F), has = F.rows.length > 0, saved = SAVED.some(s => s.q === cur);
-  el.innerHTML = `<div class="favh"><h3>Favourites</h3><span class="sp"></span>
+  el.innerHTML = `<div class="favh"><h3>Favourites</h3>${SAVED.length ? `<span class="dim sm">${SAVED.length}</span>` : ''}<span class="sp"></span>
       <button class="lnk sm" id="favsave" ${!has || saved ? 'disabled' : ''} title="Save the stats you picked below">${saved ? '★ saved' : '☆ save current'}</button></div>
-    ${SAVED.length ? SAVED.map((s, i) => { const nw = newFor(s);
-      return `<div class="fav ${s.q === cur ? 'on' : ''}" data-fav="${i}" title="${esc(describe(queryToF(s.q)))}"><span class="st">★</span><span class="t">${esc(describe(queryToF(s.q)))}</span>
-        ${nw ? `<span class="new">${nw} new</span>` : `<span class="cnt">${results(queryToF(s.q)).length}</span>`}<button class="x" data-favdel="${i}" title="Remove from favourites">×</button></div>`; }).join('')
+    ${SAVED.length ? `<div class="favlist">${SAVED.map((s, i) => { const f = queryToF(s.q), rows = rowsOf(f.rows), nw = newFor(s), cnt = results(f).length;
+      return `<div class="fav ${s.q === cur ? 'on' : ''}" data-fav="${i}" tabindex="0">
+        <div class="favtop"><span class="st">★</span><span class="fc">${nw ? `<span class="new">${nw} new</span>` : `${plural(cnt, 'match', 'matches')}`}</span>
+          ${f.need && f.need < rows.length ? `<span class="dim sm">${f.need} of ${rows.length}</span>` : ''}${f.maxp ? `<span class="dim sm">≤ ${esc(f.maxp)}</span>` : ''}<span class="sp"></span><button class="x" data-favdel="${i}" title="Remove from favourites">×</button></div>
+        <div class="favstats">${rows.map(r => { const b = BY_ID[r.id]; return `<span class="fs"><span class="${b.c ? 'c-' + b.c : ''}">${esc(bName(b))}</span>${r.min ? `<b>${fmtNum(r.min)}${unitTxt(b)}+</b>` : ''}</span>`; }).join('')}</div>
+      </div>`; }).join('')}</div>`
       : `<p class="favnone">Hunting the same stats often? Pick them below and press “save current”. Then switch with one click, and see when new matches show up.</p>`}`;
   $('#favsave').onclick = () => {
     if (!F.rows.length) return;
     if (!SAVED.some(s => s.q === cur)) { SAVED.unshift({ q: cur, seen: Date.now() }); saveSaved(); }
     renderFavs(); renderNav();
   };
-  $$('[data-fav]', el).forEach(d => d.onclick = e => {
-    if (e.target.closest('[data-favdel]')) return;
-    const s = SAVED[+d.dataset.fav]; F = queryToF(s.q); s.seen = Date.now(); saveSaved(); filterChanged(true); renderNav();
+  $$('[data-fav]', el).forEach(d => {
+    const go = () => { const s = SAVED[+d.dataset.fav]; F = queryToF(s.q); s.seen = Date.now(); saveSaved(); filterChanged(true); renderNav(); };
+    d.onclick = e => { if (!e.target.closest('[data-favdel]')) go(); };
+    d.onkeydown = e => { if (e.key === 'Enter') go(); };
   });
   $$('[data-favdel]', el).forEach(b => b.onclick = () => { SAVED.splice(+b.dataset.favdel, 1); saveSaved(); renderFavs(); renderNav(); });
 }
@@ -709,8 +761,8 @@ function renderWantedList() {
       ${w.k < w.w.length ? `<span class="mut sm">${w.k} of ${w.w.length} is enough</span>` : ''}
       ${w.t ? `<p class="note">${esc(w.t)}</p>` : ''}
       <div class="row sm">${cnt ? `<a href="#" data-wgo="${esc(w.id)}">${plural(cnt, 'listing')} match →</a>` : `<span class="dim">no listing matches yet</span>`}<span class="sp"></span>${fit.length ? `<span class="tag">your artifact fits (${fit.length})</span>` : ''}</div>
-      <div class="cfoot"><span class="dim">Buyer</span><button class="nick" data-nick="${esc(w.n)}">${esc(w.n)}</button>${discordHTML(w.d)}<span class="sp"></span>
-        ${isMine('wanted', w.id) ? `<span class="tag">yours</span>` : ''}</div>
+      <div class="cfoot"><span class="dim">Buyer</span><button class="nick" data-wcontact="${esc(w.id)}" title="Whisper them in game">${esc(w.n)}</button>${discordHTML(w.d)}<span class="sp"></span>
+        ${isMine('wanted', w.id) ? `<span class="tag">yours</span>` : `<button class="btn sm ctc" data-wcontact="${esc(w.id)}">Contact</button>`}</div>
     </article>`).join('')}</div>`
     : `<div class="empty">${wOnlyMine ? 'Nobody is asking for your artifacts right now.' : 'No wanted requests yet. Be the first.'}</div>`}`;
   $('#wonly')?.addEventListener('change', e => { wOnlyMine = e.target.checked; renderWantedList(); });
@@ -739,20 +791,18 @@ function renderMineList() {
   const el = $('#mlist'); if (!el) return;
   const L = MINEDATA.listings, Wn = MINEDATA.wanted;
   const stl = s => s.map(([id, v]) => `${esc(bName(BY_ID[id]))} <b>${fmtV(BY_ID[id], v)}</b>`).join(' · ');
-  el.innerHTML = `<div class="rhead"><h2>My listings</h2><a href="#/sell" class="sm">+ sell another</a></div>
-    ${L.length ? `<div class="mlist">${L.map(l => {
+  const stchip = (st, extra = '') => `<span class="stchip ${st}">${statusTxt(st)}${extra}</span>`;
+  el.innerHTML = `<div class="rhead"><h2>My listings</h2>${L.length ? `<span class="mut sm">${L.filter(l => l.st === 'active').length} live</span>` : ''}<a href="#/sell" class="sm">+ sell another</a></div>
+    ${L.length ? `<div class="cards mine">${L.map(l => {
       const fits = l.st === 'active' ? D.wanted.filter(w => !isMine('wanted', w.id) && wantFits(w, l)) : [];
       const ed = EDIT && EDIT.id === l.id ? EDIT.mode : '';
-      return `<div class="mi"><div><div class="row" style="gap:12px"><span class="price ${l.p == null ? 'none' : ''}">${l.p == null ? 'offers' : yangHTML(l.p)}</span>
-          <span class="st ${l.st}">${statusTxt(l.st)}${l.st === 'sold' && l.sp != null ? ' for ' + fmtYang(l.sp) : ''}</span>${l.st === 'active' ? `<span class="dim sm" data-exp="1" data-tc="${l.c}" data-tb="${l.b}" title="Posted ${fmtDate(l.c)}">${timeLabel(l.c, l.b)} · ${left(l.b)}</span>` : `<span class="dim sm">${timeLabel(l.c, l.b)}</span>`}</div>
-          <div class="stl">${stl(l.s)}</div></div>
-        <div class="acts">${l.st === 'active' ? `<button class="lnk" data-act="sold" data-id="${l.id}">mark sold</button><button class="lnk" data-act="price" data-id="${l.id}">change price</button>` : ''}
-          ${l.st !== 'hidden' ? `<button class="lnk" data-act="bump" data-id="${l.id}">${l.st === 'active' ? 'renew' : 'list again'}</button>` : ''}
-          <button class="lnk bad" data-act="delete" data-id="${l.id}">delete</button></div>
-        ${ed ? `<div class="edit"><span class="sm mut">${ed === 'sold' ? 'Sold for' : 'New price'}</span><input id="edv" value="${esc(yangInput(l.p))}" placeholder="150kk"><button class="btn" id="edok">Save</button><button class="lnk mut" id="edno">cancel</button>
-          ${ed === 'sold' ? `<span class="hint" style="margin:0">The price goes into the sales history and helps others price theirs.</span>` : ''}</div>` : ''}
-        ${fits.length ? `<div class="fits">Wanted by: ${fits.slice(0, 8).map(w => `<button class="nick" data-nick="${esc(w.n)}">${esc(w.n)}</button>${w.p != null ? ` (${budgetTxt(w, l)})` : ''}`).join(', ')}</div>` : ''}
-      </div>`; }).join('')}</div>` : `<p class="mut">Nothing here yet. Listings you post from this browser show up here.</p>`}
+      const top = `<div class="mstat">${stchip(l.st, l.st === 'sold' && l.sp != null ? ' for ' + fmtYang(l.sp) : '')}${l.st === 'active' ? `<span class="dim sm" data-exp="1" data-tc="${l.c}" data-tb="${l.b}" title="Posted ${fmtDate(l.c)}">${left(l.b)}</span>` : ''}</div>`;
+      const foot = `${fits.length ? `<div class="fits">Wanted by ${fits.slice(0, 4).map(w => `<button class="nick" data-wcontact="${esc(w.id)}">${esc(w.n)}</button>${w.p != null ? ` (${budgetTxt(w, l)})` : ''}`).join(', ')}${fits.length > 4 ? ` +${fits.length - 4}` : ''}</div>` : ''}
+        ${ed ? `<div class="edit"><span class="sm mut">${ed === 'sold' ? 'Sold for' : 'New price'}</span><input id="edv" value="${esc(yangInput(l.p))}" placeholder="150kk"><button class="btn sm" id="edok">Save</button><button class="lnk mut sm" id="edno">cancel</button></div>` : ''}
+        <div class="cfoot macts">${l.st === 'active' ? `<button class="lnk" data-act="sold" data-id="${l.id}">mark sold</button><button class="lnk" data-act="price" data-id="${l.id}">price</button>` : ''}
+          ${l.st !== 'hidden' ? `<button class="lnk" data-act="bump" data-id="${l.id}">${l.st === 'active' ? 'renew' : 'list again'}</button>` : ''}<span class="sp"></span>
+          <button class="lnk bad" data-act="delete" data-id="${l.id}">delete</button></div>`;
+      return cardHTML(l, null, null, { top, foot }); }).join('')}</div>` : `<p class="mut">Nothing here yet. Listings you post from this browser show up here.</p>`}
     <div class="rhead" style="margin-top:28px"><h2>My wanted requests</h2><a href="#/wanted" class="sm">+ new request</a></div>
     ${Wn.length ? `<div class="mlist">${Wn.map(w => { const cnt = w.st === 'active' ? D.listings.filter(l => !isMine('listing', l.id) && wantFits(w, l)).length : 0;
       return `<div class="mi"><div><div class="row" style="gap:12px"><span class="price ${w.p == null ? 'none' : ''}">${w.p == null ? 'price open' : '<span class="upto">up to</span>' + yangHTML(w.p)}</span><span class="st ${w.st}">${statusTxt(w.st)}</span>${w.st === 'active' ? `<span class="dim sm" data-exp="1" data-tc="${w.c}" data-tb="${w.b}" title="Posted ${fmtDate(w.c)}">${timeLabel(w.c, w.b)} · ${left(w.b)}</span>` : `<span class="dim sm">${timeLabel(w.c, w.b)}</span>`}</div>
