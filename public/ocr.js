@@ -57,29 +57,42 @@ const POOL = BONUSES.map(b => ({ b, k: norm(b.name) }))
   .concat(BONUSES.map(b => ({ b, k: norm(b.s) })))
   .concat(Object.entries(ALIAS).map(([k, id]) => ({ b: BONUSES.find(x => x.id === id), k })).filter(x => x.b));
 
+function bestBonus(namePart) {
+  const words = namePart.replace(/[^A-Za-zÀ-ž%. ]/g, ' ').split(/\s+/).filter(w => w.length > 1);
+  if (!words.length) return { best: null, bs: 0, words };
+  let best = null, bs = 0;
+  for (let k = 1; k <= Math.min(6, words.length); k++) {       // zkoušíme posledních i prvních k slov (kolem bývá smetí)
+    for (const part of [words.slice(-k), words.slice(0, k)]) {
+      const w = norm(part.join(' ')); if (w.length < 3) continue;
+      for (const n of POOL) { const sc = dice(w, n.k) + (w === n.k ? 0.3 : 0); if (sc > bs) { bs = sc; best = n.b; } }
+    }
+  }
+  return { best, bs, words };
+}
+const toNum = t => Number(t.replace(/[ .,](?=\d{3}\b)/g, '').replace(',', '.'));
+
 // lines: [{text, bbox?}] -> {found:[{id, v, bbox}], miss:[text]}
+// Formáty ve hře: "Skill Speed +5%", "Slowing chance 2%", "Max. HP +2,850", ale i "6 SP gain on hit" (číslo napřed, bez %).
+// Nahoře v tooltipu bývá základní stat artefaktu (např. "Magical Power +1%"); když je bonus dvakrát, bereme vyšší hodnotu.
 export function parseLines(lines) {
   const found = [], miss = [];
   for (const ln of lines) {
-    const line = String(ln.text || '').trim();
-    const m = line.match(/^(.*?[A-Za-z].*?)\s*\+?\s*(\d{1,3}(?:[ .,]\d{3})+|\d+(?:[.,]\d+)?)\s*(%?)/);
-    if (!m) continue;
-    const words = m[1].replace(/[^A-Za-zÀ-ž%. ]/g, ' ').split(/\s+/).filter(w => w.length > 1);
-    if (!words.length) continue;
-    let best = null, bs = 0;
-    for (let k = 1; k <= Math.min(6, words.length); k++) {       // posledních k slov (před nimi bývá smetí)
-      const w = norm(words.slice(-k).join(' ')); if (w.length < 3) continue;
-      for (const n of POOL) { const sc = dice(w, n.k) + (w === n.k ? 0.3 : 0); if (sc > bs) { bs = sc; best = n.b; } }
-    }
-    const hasPct = m[3] === '%';
+    const line = String(ln.text || '').replace(/[|]/g, ' ').trim();
+    let name, num, hasPct, numFirst = false;
+    const a = line.match(/^(.*?[A-Za-z].*?)\s*\+?\s*(\d{1,3}(?:[ .,]\d{3})+|\d+(?:[.,]\d+)?)\s*(%?)/);
+    const b = line.match(/^[^A-Za-z\d]*\+?\s*(\d+(?:[.,]\d+)?)\s*(%?)[\s+]*\s([A-Za-z].{2,})$/);
+    if (b && !/\d/.test(b[3])) { name = b[3]; num = b[1]; hasPct = b[2] === '%'; numFirst = true; }
+    else if (a) { name = a[1]; num = a[2]; hasPct = a[3] === '%'; }
+    else continue;
+    const { best, bs, words } = bestBonus(name);
     if (best && bs >= 0.62) {
-      if (best.unit === '%' && !hasPct && Number(m[2]) <= 3) continue;   // základní stat itemu, ne roll
-      const v = Number(m[2].replace(/[ .,](?=\d{3}\b)/g, '').replace(',', '.'));
+      if (!numFirst && best.unit === '%' && !hasPct && Number(num) <= 3 && best.max > 3) continue;   // základní stat itemu, ne roll
+      const v = toNum(num);
       if (!(v >= best.min && v <= best.max * OVER_MAX)) continue;
       const prev = found.find(f => f.id === best.id);
-      if (prev) { if (!prev.bbox && ln.bbox) prev.bbox = ln.bbox; continue; }
+      if (prev) { if (v > prev.v) { prev.v = v; if (ln.bbox) prev.bbox = ln.bbox; } else if (!prev.bbox && ln.bbox && v === prev.v) prev.bbox = ln.bbox; continue; }
       found.push({ id: best.id, v, bbox: ln.bbox || null });
-    } else if (hasPct && words.join('').length > 5) miss.push(line.replace(/^[^A-Za-z%]+/, ''));
+    } else if (hasPct && words.join('').length > 5) miss.push(line.replace(/^[^A-Za-z%\d]+/, ''));
   }
   return { found: found.slice(0, MAX_LINES), miss: [...new Set(miss)] };
 }
@@ -91,6 +104,7 @@ async function makeThumb(im, box) {
     const padX = Math.max(14, box.w * 0.05), padY = Math.max(4, (box.lh || 14) * 0.45);   // ať nechytíme půlku vedlejšího řádku
     sx = Math.max(0, box.x - padX); sy = Math.max(0, box.y - padY);
     sw = Math.min(im.width - sx, box.w + padX * 2); sh = Math.min(im.height - sy, box.h + padY * 2);
+    if (im.width <= 700) { sx = 0; sw = im.width; }       // úzký výřez tooltipu: šířku neořezávat (text je na střed)
   }
   const maxW = box ? 640 : 1000, s = Math.min(1, maxW / sw);
   const cv = document.createElement('canvas'); cv.width = Math.round(sw * s); cv.height = Math.round(sh * s);
@@ -136,5 +150,5 @@ export async function readScreenshot(file, onMsg = () => {}) {
     box = { x: x0, y: y0, w: x1 - x0, h: y1 - y0, lh };
   }
   const thumb = await makeThumb(im, box);
-  return { found: found.map(({ id, v }) => ({ id, v })), miss, thumb, url };
+  return { found: found.map(({ id, v }) => ({ id, v })), miss, thumb, url, lines: lines.map(l => l.text) };
 }

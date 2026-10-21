@@ -6,14 +6,15 @@ Prodejce vloží screenshot, staty se přečtou samy a nabídka jde ven. Kupují
 ## Co umí
 
 - **Prodej přes screenshot**: Ctrl+V / přetažení / soubor. Text se čte v prohlížeči (tesseract.js), uloží se jen výřez s bonusy jako důkaz.
-- **Hledání podle statů**: libovolný počet statů s minimem, režim „všechny“ nebo „aspoň X z Y“, max. cena, řazení (shoda, cena, nejnovější, PvM skóre), jen se screenshotem.
+- **Hledání podle statů**: klikací seznam všech statů (s vyhledáváním), u vybraných volitelné minimum, režim „všechny“ nebo „aspoň X z Y“, max. cena, řazení (shoda, cena, nejnovější, PvM skóre), jen se screenshotem.
 - **Ceny na trhu**: u každého hledání nejnižší a mediánová cena, plus medián skutečných prodejů za 45 dní.
 - **Hlídaná hledání**: uložíš hledání a u Marketu vidíš počet nových nabídek, které sedí.
 - **Sdílení hledání odkazem** (`#/market?f=mon:15,sd:5&need=2&max=200kk`).
 - **Poptávky (WTB)**: kupující vystaví, co shání. Prodejce při vystavování hned vidí, kdo jeho artefakt chce a za kolik.
 - **Moje**: prodáno (s cenou do historie), obnovit, změnit cenu, smazat. Bez účtů, klíč k úpravám drží prohlížeč; jde ho zálohovat a přenést na jiné zařízení.
 - Nahlašování (3 nahlášení = skryto), denní limity na IP, nabídka vyprší po 14 dnech.
-- CZ / EN.
+- UI je jen anglicky.
+- **Demo artefakty**: dokud je na marketu méně než 10 skutečných nabídek, přimíchá se 40 demo artefaktů (generované v prohlížeči, nejsou v databázi), aby šlo vyzkoušet hledání. Vypíná se konstantou `DEMO_UNTIL` v `public/app.js`.
 
 ## Struktura
 

@@ -61,31 +61,31 @@ const isAdmin = (req, env) => !!env.ADMIN_KEY && req.headers.get('x-admin-key') 
 function price(v) {
   if (v === null || v === undefined || v === '') return null;
   const n = Number(v);
-  if (!Number.isFinite(n) || n < 0 || n > 1e15) throw new Error('Neplatná cena');
+  if (!Number.isFinite(n) || n < 0 || n > 1e15) throw new Error('Invalid price');
   return Math.round(n);
 }
 function statsOf(rows) {
-  if (!Array.isArray(rows) || !rows.length || rows.length > MAX_LINES) throw new Error('Artefakt musí mít 1 až 7 bonusů');
+  if (!Array.isArray(rows) || !rows.length || rows.length > MAX_LINES) throw new Error('An artifact needs 1 to 7 bonuses');
   const seen = new Set(), out = [];
   for (const r of rows) {
-    if (!Array.isArray(r)) throw new Error('Neplatný řádek');
+    if (!Array.isArray(r)) throw new Error('Invalid row');
     const b = BY_ID[r[0]], v = Number(r[1]);
-    if (!b) throw new Error('Neznámý bonus');
-    if (seen.has(b.id)) throw new Error('Bonus ' + b.s + ' je tam dvakrát');
-    if (!Number.isFinite(v) || v <= 0 || v > b.max * OVER_MAX) throw new Error('Hodnota ' + b.s + ' je mimo rozsah');
+    if (!b) throw new Error('Unknown bonus');
+    if (seen.has(b.id)) throw new Error(b.s + ' is there twice');
+    if (!Number.isFinite(v) || v <= 0 || v > b.max * OVER_MAX) throw new Error(b.s + ' is out of range');
     seen.add(b.id); out.push([b.id, Math.round(v * 100) / 100]);
   }
   return out;
 }
 function wantOf(rows) {
-  if (!Array.isArray(rows) || !rows.length || rows.length > 10) throw new Error('Poptávka musí mít 1 až 10 statů');
+  if (!Array.isArray(rows) || !rows.length || rows.length > 10) throw new Error('A wanted request needs 1 to 10 stats');
   const seen = new Set(), out = [];
   for (const r of rows) {
     const b = Array.isArray(r) && BY_ID[r[0]];
-    if (!b) throw new Error('Neznámý bonus');
+    if (!b) throw new Error('Unknown bonus');
     if (seen.has(b.id)) continue;
     const m = r[1] === null || r[1] === '' || r[1] === undefined ? 0 : Number(r[1]);
-    if (!Number.isFinite(m) || m < 0 || m > b.max * OVER_MAX) throw new Error('Minimum ' + b.s + ' je mimo rozsah');
+    if (!Number.isFinite(m) || m < 0 || m > b.max * OVER_MAX) throw new Error('Minimum for ' + b.s + ' is out of range');
     seen.add(b.id); out.push([b.id, Math.round(m * 100) / 100]);
   }
   return out;
@@ -100,7 +100,7 @@ async function insertWithId(env, sqlFn) {
     try { await sqlFn(id); return id; }
     catch (e) { if (!/UNIQUE|PRIMARY/i.test(String(e))) throw e; }
   }
-  throw new Error('Zkus to znovu');
+  throw new Error('Please try again');
 }
 
 const pubListing = r => ({
@@ -132,32 +132,32 @@ async function createListing(req, env) {
   let data, img = null;
   if (ct.includes('multipart/form-data')) {
     const f = await req.formData();
-    try { data = JSON.parse(f.get('data') || ''); } catch { return err('Neplatná data'); }
+    try { data = JSON.parse(f.get('data') || ''); } catch { return err('Invalid data'); }
     const file = f.get('img');
     if (file && typeof file === 'object' && file.size) {
-      if (!/^image\/(jpeg|webp|png)$/.test(file.type)) return err('Obrázek musí být JPG, PNG nebo WebP');
-      if (file.size > IMG_MAX) return err('Obrázek je moc velký');
+      if (!/^image\/(jpeg|webp|png)$/.test(file.type)) return err('The image must be JPG, PNG or WebP');
+      if (file.size > IMG_MAX) return err('The image is too large');
       img = { type: file.type, data: await file.arrayBuffer() };
     }
   } else {
     data = await req.json().catch(() => null);
   }
-  if (!data || typeof data !== 'object') return err('Neplatná data');
+  if (!data || typeof data !== 'object') return err('Invalid data');
 
   let stats, p;
   try { stats = statsOf(data.stats); p = price(data.price); } catch (e) { return err(e.message); }
   const nick = clean(data.nick, 24);
-  if (!NICK.test(nick)) return err('Napiš svůj nick ze hry (2–24 znaků, bez mezer)');
+  if (!NICK.test(nick)) return err('Enter your in-game nick (2–24 characters, no spaces)');
   const contact = clean(data.contact, 40) || null, note = clean(data.note, 200) || null;
   const rank = data.rank === null || data.rank === undefined || data.rank === '' ? null : Number(data.rank);
-  if (rank !== null && !(Number.isInteger(rank) && rank >= 0 && rank <= 30)) return err('Neplatný rank');
+  if (rank !== null && !(Number.isInteger(rank) && rank >= 0 && rank <= 30)) return err('Invalid rank');
 
   const day = today(), ih = await ipHash(req, day);
-  if (!(await underLimit(env, 'listings', ih, day, LIMITS.listing))) return err('Dnešní limit nabídek vyčerpán, zkus to zítra.', 429);
+  if (!(await underLimit(env, 'listings', ih, day, LIMITS.listing))) return err('Daily listing limit reached, try again tomorrow.', 429);
   const sig = [...stats].sort((a, b) => a[0].localeCompare(b[0])).map(x => x.join(':')).join(',');
   const dup = await env.DB.prepare("SELECT id FROM listings WHERE sig=? AND lower(nick)=lower(?) AND status='active' AND bumped>?")
     .bind(sig, nick, Date.now() - TTL).first();
-  if (dup) return err('Tenhle artefakt už máš vystavený.', 409);
+  if (dup) return err('You already have this artifact listed.', 409);
 
   const key = rid(24), kh = await sha(key), now = Date.now();
   const id = await insertWithId(env, id => env.DB.prepare(
@@ -169,11 +169,11 @@ async function createListing(req, env) {
 
 async function listingAction(req, env, id) {
   const b = await req.json().catch(() => null);
-  if (!b) return err('Neplatná data');
+  if (!b) return err('Invalid data');
   const row = await env.DB.prepare('SELECT * FROM listings WHERE id=?').bind(id).first();
-  if (!row || row.status === 'deleted') return err('Nabídka neexistuje', 404);
+  if (!row || row.status === 'deleted') return err('Listing not found', 404);
   const admin = isAdmin(req, env);
-  if (!admin && (typeof b.key !== 'string' || (await sha(b.key)) !== row.kh)) return err('Tohle není tvoje nabídka', 403);
+  if (!admin && (typeof b.key !== 'string' || (await sha(b.key)) !== row.kh)) return err('This is not your listing', 403);
   const now = Date.now();
   try {
     switch (b.action) {
@@ -183,8 +183,8 @@ async function listingAction(req, env, id) {
         break;
       }
       case 'bump': {
-        if (row.status !== 'active' && row.status !== 'sold') return err('Nabídku nejde obnovit');
-        if (row.status === 'active' && now - row.bumped < DAY && row.bumped > now - TTL) return err('Obnovit jde jednou za 24 hodin');
+        if (row.status !== 'active' && row.status !== 'sold') return err('This listing cannot be renewed');
+        if (row.status === 'active' && now - row.bumped < DAY && row.bumped > now - TTL) return err('You can renew once every 24 hours');
         await env.DB.prepare("UPDATE listings SET status='active', bumped=?, sold_at=NULL, sold_price=NULL WHERE id=?").bind(now, id).run();
         break;
       }
@@ -199,7 +199,7 @@ async function listingAction(req, env, id) {
           env.DB.prepare('DELETE FROM imgs WHERE id=?').bind(id),
         ]);
         break;
-      default: return err('Neznámá akce');
+      default: return err('Unknown action');
     }
   } catch (e) { return err(e.message); }
   return json({ ok: true });
@@ -207,15 +207,15 @@ async function listingAction(req, env, id) {
 
 async function createWanted(req, env) {
   const b = await req.json().catch(() => null);
-  if (!b) return err('Neplatná data');
+  if (!b) return err('Invalid data');
   let want, maxp;
   try { want = wantOf(b.want); maxp = price(b.maxPrice); } catch (e) { return err(e.message); }
   const need = Math.max(1, Math.min(want.length, Number(b.need) || want.length));
   const nick = clean(b.nick, 24);
-  if (!NICK.test(nick)) return err('Napiš svůj nick ze hry (2–24 znaků, bez mezer)');
+  if (!NICK.test(nick)) return err('Enter your in-game nick (2–24 characters, no spaces)');
   const contact = clean(b.contact, 40) || null, note = clean(b.note, 200) || null;
   const day = today(), ih = await ipHash(req, day);
-  if (!(await underLimit(env, 'wanted', ih, day, LIMITS.wanted))) return err('Dnešní limit poptávek vyčerpán, zkus to zítra.', 429);
+  if (!(await underLimit(env, 'wanted', ih, day, LIMITS.wanted))) return err('Daily request limit reached, try again tomorrow.', 429);
   const key = rid(24), kh = await sha(key), now = Date.now();
   const id = await insertWithId(env, id => env.DB.prepare(
     'INSERT INTO wanted (id,kh,want,need,maxp,nick,contact,note,created,bumped,day,ih) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)')
@@ -225,17 +225,17 @@ async function createWanted(req, env) {
 
 async function wantedAction(req, env, id) {
   const b = await req.json().catch(() => null);
-  if (!b) return err('Neplatná data');
+  if (!b) return err('Invalid data');
   const row = await env.DB.prepare('SELECT * FROM wanted WHERE id=?').bind(id).first();
-  if (!row || row.status === 'deleted') return err('Poptávka neexistuje', 404);
-  if (!isAdmin(req, env) && (typeof b.key !== 'string' || (await sha(b.key)) !== row.kh)) return err('Tohle není tvoje poptávka', 403);
+  if (!row || row.status === 'deleted') return err('Request not found', 404);
+  if (!isAdmin(req, env) && (typeof b.key !== 'string' || (await sha(b.key)) !== row.kh)) return err('This is not your request', 403);
   const now = Date.now();
   if (b.action === 'bump') {
-    if (now - row.bumped < DAY && row.bumped > now - TTL) return err('Obnovit jde jednou za 24 hodin');
+    if (now - row.bumped < DAY && row.bumped > now - TTL) return err('You can renew once every 24 hours');
     await env.DB.prepare("UPDATE wanted SET status='active', bumped=? WHERE id=?").bind(now, id).run();
   } else if (b.action === 'delete') {
     await env.DB.prepare("UPDATE wanted SET status='deleted' WHERE id=?").bind(id).run();
-  } else return err('Neznámá akce');
+  } else return err('Unknown action');
   return json({ ok: true });
 }
 
@@ -260,10 +260,10 @@ async function report(req, env, kind, id) {
   const day = today(), ih = await ipHash(req, 'report');      // stálý hash, ať jeden člověk nahlásí jen jednou
   const dayIh = await ipHash(req, day);
   const used = await env.DB.prepare('SELECT count(*) AS c FROM reports WHERE ih=? AND day=?').bind(ih, day).first();
-  if ((used?.c || 0) >= LIMITS.report) return err('Dnešní limit nahlášení vyčerpán', 429);
+  if ((used?.c || 0) >= LIMITS.report) return err('Daily report limit reached', 429);
   const row = await env.DB.prepare(`SELECT ih FROM ${table} WHERE id=?`).bind(id).first();
-  if (!row) return err('Neexistuje', 404);
-  if (row.ih === dayIh) return err('Vlastní nabídku nahlásit nejde');
+  if (!row) return err('Not found', 404);
+  if (row.ih === dayIh) return err('You cannot report your own listing');
   const ins = await env.DB.prepare('INSERT OR IGNORE INTO reports (target, ih, day) VALUES (?,?,?)').bind(kind + ':' + id, ih, day).run();
   if (ins.meta?.changes) {
     await env.DB.prepare(`UPDATE ${table} SET reports=reports+1, status=CASE WHEN reports+1>=3 AND status='active' THEN 'hidden' ELSE status END WHERE id=?`).bind(id).run();
@@ -294,7 +294,7 @@ export default {
       if ((x = p.match(/^\/api\/report\/(listing|wanted)\/([A-Za-z0-9]{6,12})$/)) && m === 'POST') return report(req, env, x[1], x[2]);
       if ((x = p.match(/^\/api\/img\/([A-Za-z0-9]{6,12})$/)) && m === 'GET') return image(env, x[1]);
       if (p === '/api/admin/reported' && m === 'GET') {
-        if (!isAdmin(req, env)) return err('Zakázáno', 403);
+        if (!isAdmin(req, env)) return err('Forbidden', 403);
         const [l, w] = await env.DB.batch([
           env.DB.prepare('SELECT * FROM listings WHERE reports>0 AND status!=\'deleted\' ORDER BY reports DESC LIMIT 200'),
           env.DB.prepare('SELECT * FROM wanted WHERE reports>0 AND status!=\'deleted\' ORDER BY reports DESC LIMIT 200'),
